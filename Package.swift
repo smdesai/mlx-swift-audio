@@ -12,6 +12,7 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", branch: "main"),
+    .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.29.0"),
     .package(url: "https://github.com/huggingface/swift-transformers", .upToNextMinor(from: "1.1.0")),
     // TODO: Switch back to upstream after https://github.com/espeak-ng/espeak-ng/pull/2327 is merged
     .package(url: "https://github.com/DePasqualeOrg/espeak-ng-spm.git", branch: "fix-path-espeak-data-macro"),
@@ -22,6 +23,7 @@ let package = Package(
       dependencies: [
         .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
         .product(name: "MLXLLM", package: "mlx-swift-lm"),
+        .product(name: "MLXFFT", package: "mlx-swift"),
         .product(name: "Transformers", package: "swift-transformers"),
         .product(name: "libespeak-ng", package: "espeak-ng-spm"),
         .product(name: "espeak-ng-data", package: "espeak-ng-spm"),

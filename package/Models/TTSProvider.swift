@@ -14,6 +14,7 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
   case orpheus
   case marvis
   case outetts
+  case chatterbox
 
   public var id: String { rawValue }
 
@@ -23,6 +24,7 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
   public var displayName: String {
     switch self {
       case .outetts: "OuteTTS"
+      case .chatterbox: "Chatterbox"
       default: rawValue.capitalized
     }
   }
@@ -38,6 +40,8 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
         "Advanced conversational TTS with streaming"
       case .outetts:
         "TTS with speaker profiles"
+      case .chatterbox:
+        "TTS with reference audio support"
     }
   }
 
@@ -52,6 +56,8 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
         "Marvis: Advanced conversational TTS with streaming support.\n\nNote: Downloads model weights on first use."
       case .outetts:
         "OuteTTS: Supports custom speaker profiles."
+      case .chatterbox:
+        "Chatterbox: TTS with reference audio support.\n\nNote: Downloads model weights on first use."
     }
   }
 
@@ -73,7 +79,7 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
   }
 
   public var supportsReferenceAudio: Bool {
-    self == .outetts
+    self == .outetts || self == .chatterbox
   }
 
   // MARK: - Voice Management
@@ -89,6 +95,8 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
         "conversational_a"
       case .outetts:
         "default"
+      case .chatterbox:
+        "default"
     }
   }
 
@@ -103,6 +111,8 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
         Self.marvisVoices
       case .outetts:
         Self.outeTTSVoices
+      case .chatterbox:
+        Self.chatterboxVoices
     }
   }
 
@@ -201,6 +211,12 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
 
   /// OuteTTS voice definitions (supports custom speaker profiles)
   private static let outeTTSVoices: [Voice] = [
+    Voice(id: "default", displayName: "Default", languageCode: "en-US"),
+    Voice(id: "custom", displayName: "Custom (Reference Audio)", languageCode: "en-US"),
+  ]
+
+  /// Chatterbox voice definitions (voice cloning with reference audio)
+  private static let chatterboxVoices: [Voice] = [
     Voice(id: "default", displayName: "Default", languageCode: "en-US"),
     Voice(id: "custom", displayName: "Custom (Reference Audio)", languageCode: "en-US"),
   ]

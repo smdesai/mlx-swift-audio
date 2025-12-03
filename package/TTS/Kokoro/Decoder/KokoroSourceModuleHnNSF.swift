@@ -6,10 +6,10 @@ import MLX
 import MLXNN
 import MLXRandom
 
-class SourceModuleHnNSF: Module {
+class KokoroSourceModuleHnNSF: Module {
   private let sineAmp: Float
   private let noiseStd: Float
-  private let lSinGen: SineGen
+  private let lSinGen: KokoroSineGen
   private let lLinear: Linear
 
   init(
@@ -25,7 +25,7 @@ class SourceModuleHnNSF: Module {
     noiseStd = addNoiseStd
 
     // To produce sine waveforms
-    lSinGen = SineGen(
+    lSinGen = KokoroSineGen(
       sampRate: samplingRate,
       upsampleScale: upsampleScale,
       harmonicNum: harmonicNum,

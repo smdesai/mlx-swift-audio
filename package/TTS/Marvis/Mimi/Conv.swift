@@ -2,9 +2,9 @@ import Foundation
 import MLX
 import MLXNN
 
-// MARK: - Conv1d (NCL wrapper over MLX's NLC)
+// MARK: - MimiConv1d (NCL wrapper over MLX's NLC)
 
-final class Conv1d: Module {
+final class MimiConv1d: Module {
   var weight: MLXArray
   var bias: MLXArray?
 
@@ -49,9 +49,9 @@ final class Conv1d: Module {
   }
 }
 
-// MARK: - ConvTranspose1d (NCL wrapper)
+// MARK: - MimiConvTranspose1d (NCL wrapper)
 
-final class ConvTranspose1d: Module {
+final class MimiConvTranspose1d: Module {
   var weight: MLXArray
   var bias: MLXArray?
 
@@ -114,14 +114,14 @@ final class ConvTranspose1d: Module {
 // MARK: - Normalized wrappers (kept as simple pass-through like Python)
 
 final class NormConv1d: Module {
-  @ModuleInfo var conv: Conv1d
+  @ModuleInfo var conv: MimiConv1d
 
   init(
     inChannels: Int, outChannels: Int, ksize: Int,
     stride: Int = 1, padding: Int = 0,
     groups: Int = 1, dilation: Int = 1, bias: Bool = true,
   ) {
-    _conv = ModuleInfo(wrappedValue: Conv1d(
+    _conv = ModuleInfo(wrappedValue: MimiConv1d(
       inChannels: inChannels, outChannels: outChannels, ksize: ksize,
       stride: stride, padding: padding, groups: groups, dilation: dilation, bias: bias,
     ))
@@ -131,14 +131,14 @@ final class NormConv1d: Module {
 }
 
 final class NormConvTranspose1d: Module {
-  @ModuleInfo var convtr: ConvTranspose1d
+  @ModuleInfo var convtr: MimiConvTranspose1d
 
   init(
     inChannels: Int, outChannels: Int, ksize: Int,
     stride: Int = 1, padding: Int = 0,
     groups: Int = 1, bias: Bool = true,
   ) {
-    _convtr = ModuleInfo(wrappedValue: ConvTranspose1d(
+    _convtr = ModuleInfo(wrappedValue: MimiConvTranspose1d(
       inChannels: inChannels, outChannels: outChannels, ksize: ksize,
       stride: stride, padding: padding, groups: groups, bias: bias,
     ))

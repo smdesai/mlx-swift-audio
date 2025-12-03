@@ -19,6 +19,12 @@ struct VoicePickerView: View {
           .padding(.vertical, 8)
           .background(.background.secondary)
           .clipShape(RoundedRectangle(cornerRadius: 8))
+      case .chatterbox:
+        Text("Reference Audio")
+          .padding(.horizontal, 12)
+          .padding(.vertical, 8)
+          .background(.background.secondary)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
     }
   }
 }

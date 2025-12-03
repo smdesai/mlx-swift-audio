@@ -8,6 +8,7 @@
 - **Orpheus**: 8 voices, emotional expressions (`<laugh>`, `<sigh>`, etc.)
 - **Marvis**: Streaming, quality levels, custom reference audio
 - **OuteTTS**: Custom voices with reference audio
+- **Chatterbox**: Custom reference audio, emotion control
 
 ## Installation
 
@@ -41,6 +42,12 @@ let outetts = OuteTTSEngine()
 try await outetts.load()
 let speaker = try await OuteTTSEngine.loadSpeaker(from: "speaker.json")
 try await outetts.say("Using reference audio.", speaker: speaker)
+
+// Chatterbox - custom reference audio with emotion control
+let chatterbox = ChatterboxEngine()
+try await chatterbox.load()
+let referenceAudio = try await chatterbox.prepareReferenceAudio(from: audioFileURL)
+try await chatterbox.say("Speaking with your reference audio.", referenceAudio: referenceAudio)
 ```
 
 For more control over playback:

@@ -197,3 +197,53 @@ extension AppState {
     set { engineManager.orpheusEngine.topP = newValue }
   }
 }
+
+// MARK: - Chatterbox Reference Audio
+
+extension AppState {
+  /// Current prepared reference audio for Chatterbox
+  var chatterboxReferenceAudio: ChatterboxReferenceAudio? {
+    get { engineManager.chatterboxReferenceAudio }
+    set { engineManager.chatterboxReferenceAudio = newValue }
+  }
+
+  /// Whether reference audio is prepared for Chatterbox
+  var isChatterboxReferenceAudioLoaded: Bool {
+    engineManager.chatterboxReferenceAudio != nil
+  }
+
+  /// Description of current reference audio
+  var chatterboxReferenceAudioDescription: String {
+    engineManager.chatterboxReferenceAudio?.description ?? "No reference audio"
+  }
+
+  /// Prepare reference audio from a URL (local file or remote)
+  func prepareChatterboxReferenceAudio(from url: URL) async throws {
+    let ref = try await engineManager.chatterboxEngine.prepareReferenceAudio(from: url)
+    engineManager.chatterboxReferenceAudio = ref
+  }
+
+  /// Prepare the default reference audio
+  func prepareDefaultChatterboxReferenceAudio() async throws {
+    let ref = try await engineManager.chatterboxEngine.prepareDefaultReferenceAudio()
+    engineManager.chatterboxReferenceAudio = ref
+  }
+
+  /// Emotion exaggeration for Chatterbox
+  var chatterboxExaggeration: Float {
+    get { engineManager.chatterboxEngine.exaggeration }
+    set { engineManager.chatterboxEngine.exaggeration = newValue }
+  }
+
+  /// Temperature for Chatterbox
+  var chatterboxTemperature: Float {
+    get { engineManager.chatterboxEngine.temperature }
+    set { engineManager.chatterboxEngine.temperature = newValue }
+  }
+
+  /// CFG weight for Chatterbox
+  var chatterboxCFGWeight: Float {
+    get { engineManager.chatterboxEngine.cfgWeight }
+    set { engineManager.chatterboxEngine.cfgWeight = newValue }
+  }
+}

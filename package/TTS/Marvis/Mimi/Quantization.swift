@@ -123,8 +123,8 @@ final class ResidualVectorQuantization: Module {
 // MARK: - ResidualVectorQuantizer
 
 final class ResidualVectorQuantizer: Module {
-  @ModuleInfo var input_proj: Conv1d?
-  @ModuleInfo var output_proj: Conv1d?
+  @ModuleInfo var input_proj: MimiConv1d?
+  @ModuleInfo var output_proj: MimiConv1d?
   @ModuleInfo var vq: ResidualVectorQuantization
 
   init(
@@ -140,12 +140,12 @@ final class ResidualVectorQuantizer: Module {
     if inDim == dim, !forceProjection {
       _input_proj = ModuleInfo(wrappedValue: nil)
     } else {
-      _input_proj = ModuleInfo(wrappedValue: Conv1d(inChannels: inDim, outChannels: dim, ksize: 1, bias: false))
+      _input_proj = ModuleInfo(wrappedValue: MimiConv1d(inChannels: inDim, outChannels: dim, ksize: 1, bias: false))
     }
     if outDim == dim, !forceProjection {
       _output_proj = ModuleInfo(wrappedValue: nil)
     } else {
-      _output_proj = ModuleInfo(wrappedValue: Conv1d(inChannels: dim, outChannels: outDim, ksize: 1, bias: false))
+      _output_proj = ModuleInfo(wrappedValue: MimiConv1d(inChannels: dim, outChannels: outDim, ksize: 1, bias: false))
     }
     _vq = ModuleInfo(wrappedValue: ResidualVectorQuantization(
       nq: nq, dim: dim, codebookSize: bins, codebookDim: nil,

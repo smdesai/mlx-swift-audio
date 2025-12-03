@@ -8,7 +8,7 @@ import MLXNN
 class Generator {
   let numKernels: Int
   let numUpsamples: Int
-  let mSource: SourceModuleHnNSF
+  let mSource: KokoroSourceModuleHnNSF
   let f0Upsample: Upsample
   let postNFFt: Int
   var noiseConvs: [Conv1dInference]
@@ -35,7 +35,7 @@ class Generator {
     let upsampleScaleNum = MLX.product(MLXArray(upsampleRates)) * genIstftHopSize
     let upsampleScaleNumVal: Int = upsampleScaleNum.item()
 
-    mSource = SourceModuleHnNSF(
+    mSource = KokoroSourceModuleHnNSF(
       weights: weights,
       samplingRate: 24000,
       upsampleScale: upsampleScaleNum.item(),

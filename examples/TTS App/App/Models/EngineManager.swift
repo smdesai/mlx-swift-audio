@@ -12,6 +12,7 @@ final class EngineManager {
   private(set) var orpheusEngine = OrpheusEngine()
   private(set) var marvisEngine = MarvisEngine()
   private(set) var outeTTSEngine = OuteTTSEngine()
+  private(set) var chatterboxEngine = ChatterboxEngine()
 
   // MARK: - State
 
@@ -33,6 +34,11 @@ final class EngineManager {
   var orpheusVoice: OrpheusTTS.Voice = .tara
   var marvisVoice: MarvisTTS.Voice = .conversationalA
 
+  // MARK: - Chatterbox Reference Audio
+
+  /// Prepared reference audio for Chatterbox (enables fast speaker switching)
+  var chatterboxReferenceAudio: ChatterboxReferenceAudio?
+
   // MARK: - Computed Properties
 
   var currentEngine: any TTSEngine {
@@ -41,6 +47,7 @@ final class EngineManager {
       case .orpheus: orpheusEngine
       case .marvis: marvisEngine
       case .outetts: outeTTSEngine
+      case .chatterbox: chatterboxEngine
     }
   }
 
@@ -104,6 +111,12 @@ final class EngineManager {
               self?.loadingProgress = progress.fractionCompleted
             }
           }
+        case .chatterbox:
+          try await chatterboxEngine.load { [weak self] progress in
+            Task { @MainActor in
+              self?.loadingProgress = progress.fractionCompleted
+            }
+          }
       }
       isLoading = false
       loadingProgress = 1.0
@@ -135,6 +148,8 @@ final class EngineManager {
           return try await marvisEngine.generate(text, voice: marvisVoice)
         case .outetts:
           return try await outeTTSEngine.generate(text)
+        case .chatterbox:
+          return try await chatterboxEngine.generate(text, referenceAudio: chatterboxReferenceAudio)
       }
     } catch let e as TTSError {
       error = e

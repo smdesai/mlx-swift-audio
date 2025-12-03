@@ -11,13 +11,29 @@ struct SettingsSection: View {
       if appState.selectedProvider.supportsSpeed {
         SpeedSliderView(
           speed: $appState.speed,
-          isDisabled: appState.isGenerating,
+          isDisabled: appState.isGenerating
         )
       }
 
       // Quality Level (Marvis only)
       if appState.selectedProvider.supportsQualityLevels {
         QualityLevelSection()
+      }
+
+      // Reference Audio (Chatterbox only)
+      if appState.selectedProvider == .chatterbox {
+        ReferenceAudioView()
+
+        // Emotion exaggeration slider
+        VStack(alignment: .leading, spacing: 4) {
+          HStack {
+            Text("Emotion")
+            Spacer()
+            Text(String(format: "%.1f", appState.chatterboxExaggeration))
+              .foregroundStyle(.secondary)
+          }
+          Slider(value: $appState.chatterboxExaggeration, in: 0...2, step: 0.1)
+        }
       }
 
       // Provider Status Message
