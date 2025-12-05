@@ -2,7 +2,7 @@ import Foundation
 import MLX
 
 /// Actor wrapper for MarvisOrchestrator that provides thread-safe generation
-public actor MarvisTTS {
+actor MarvisTTS {
   private var orchestrator: MarvisOrchestrator?
 
   var isInitialized: Bool { orchestrator != nil }
@@ -129,7 +129,7 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
 
   // MARK: - Private Properties
 
-  @ObservationIgnored private let marvisTTS = MarvisTTS()
+  @ObservationIgnored private var marvisTTS: MarvisTTS?
   @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.marvis.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
   @ObservationIgnored private var lastModelVariant: ModelVariant?
@@ -147,26 +147,26 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
   // MARK: - TTSEngine Protocol Methods
 
   public func load(progressHandler: (@Sendable (Progress) -> Void)?) async throws {
-    let isInitialized = await marvisTTS.isInitialized
-
     // Check if we need to reload
-    if isInitialized, lastModelVariant == modelVariant {
+    if let marvisTTS, await marvisTTS.isInitialized, lastModelVariant == modelVariant {
       Log.tts.debug("MarvisEngine already loaded with same configuration")
       return
     }
 
     // Clean up existing model if configuration changed
-    if isInitialized {
+    if marvisTTS != nil {
       Log.model.info("Configuration changed, reloading...")
       try await cleanup()
     }
 
     do {
-      try await marvisTTS.initialize(
+      let tts = MarvisTTS()
+      try await tts.initialize(
         modelRepoId: modelVariant.repoId,
         progressHandler: progressHandler ?? { _ in },
       )
 
+      marvisTTS = tts
       lastModelVariant = modelVariant
       isLoaded = true
       Log.model.info("Marvis TTS model loaded successfully")
@@ -190,8 +190,7 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
   public func unload() async {
     await stop()
 
-    // Clear model but preserve audio player
-    try? await marvisTTS.cleanUp()
+    marvisTTS = nil
     lastModelVariant = nil
     isLoaded = false
 
@@ -238,6 +237,10 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
     generationTask?.cancel()
     isGenerating = true
     generationTime = 0
+
+    guard let marvisTTS else {
+      throw TTSError.modelNotLoaded
+    }
 
     do {
       let result = try await marvisTTS.generate(
@@ -307,14 +310,25 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
       return AsyncThrowingStream { $0.finish(throwing: TTSError.invalidArgument("Text cannot be empty")) }
     }
 
-    guard isLoaded else {
-      return AsyncThrowingStream { $0.finish(throwing: TTSError.modelNotLoaded) }
-    }
-
     return AsyncThrowingStream { continuation in
       Task { @MainActor [weak self] in
         guard let self else {
           continuation.finish()
+          return
+        }
+
+        // Auto-load if needed
+        if !isLoaded {
+          do {
+            try await load()
+          } catch {
+            continuation.finish(throwing: error)
+            return
+          }
+        }
+
+        guard let marvisTTS else {
+          continuation.finish(throwing: TTSError.modelNotLoaded)
           return
         }
 

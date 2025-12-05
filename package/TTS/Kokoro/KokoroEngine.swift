@@ -270,15 +270,21 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
       return AsyncThrowingStream { $0.finish(throwing: TTSError.invalidArgument("Text cannot be empty")) }
     }
 
-    guard isLoaded else {
-      return AsyncThrowingStream { $0.finish(throwing: TTSError.modelNotLoaded) }
-    }
-
     return AsyncThrowingStream { continuation in
       Task { @MainActor [weak self] in
         guard let self else {
           continuation.finish()
           return
+        }
+
+        // Auto-load if needed
+        if !isLoaded {
+          do {
+            try await load()
+          } catch {
+            continuation.finish(throwing: error)
+            return
+          }
         }
 
         guard let kokoroTTS else {

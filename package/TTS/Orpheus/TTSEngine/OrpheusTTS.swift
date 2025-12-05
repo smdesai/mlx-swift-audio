@@ -43,7 +43,7 @@ private struct InferenceState: @unchecked Sendable {
   var currentIds: MLXArray
 }
 
-public actor OrpheusTTS {
+actor OrpheusTTS {
   enum OrpheusTTSError: LocalizedError {
     case tooManyTokens
     case weightsNotAvailable

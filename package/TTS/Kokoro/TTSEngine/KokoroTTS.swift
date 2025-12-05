@@ -3,7 +3,7 @@ import MLX
 import MLXNN
 import Synchronization
 
-public actor KokoroTTS {
+actor KokoroTTS {
   enum KokoroTTSError: LocalizedError {
     case tooManyTokens
     case sentenceSplitError
