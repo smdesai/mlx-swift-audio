@@ -14,17 +14,9 @@ struct VoicePickerView: View {
       case .marvis:
         MarvisVoicePicker(voice: $appState.marvisVoice)
       case .outetts:
-        Text("Default Voice")
-          .padding(.horizontal, 12)
-          .padding(.vertical, 8)
-          .background(.background.secondary)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
+        EmptyView()
       case .chatterbox:
-        Text("Reference Audio")
-          .padding(.horizontal, 12)
-          .padding(.vertical, 8)
-          .background(.background.secondary)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
+        EmptyView()
     }
   }
 }

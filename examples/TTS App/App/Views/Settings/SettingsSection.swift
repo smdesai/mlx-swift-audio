@@ -20,7 +20,12 @@ struct SettingsSection: View {
         QualityLevelSection()
       }
 
-      // Reference Audio (Chatterbox only)
+      // Reference Audio (OuteTTS)
+      if appState.selectedProvider == .outetts {
+        OuteTTSReferenceAudioView()
+      }
+
+      // Reference Audio (Chatterbox)
       if appState.selectedProvider == .chatterbox {
         ReferenceAudioView()
 
@@ -60,6 +65,23 @@ private struct QualityLevelSection: View {
         }
       }
       .pickerStyle(.menu)
+    }
+  }
+}
+
+/// Reference audio placeholder for OuteTTS
+private struct OuteTTSReferenceAudioView: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Reference Audio (not yet implemented)")
+        .font(.headline)
+
+      Button {
+        // TODO: Implement reference audio selection
+      } label: {
+        Label("Select Audio File", systemImage: "waveform")
+      }
+      .buttonStyle(.bordered)
     }
   }
 }

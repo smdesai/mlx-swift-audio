@@ -22,20 +22,19 @@ struct RegularLayoutView: View {
           .padding()
         }
       }
-      .navigationTitle(appState.selectedProvider.displayName)
+      .navigationTitle("TTS App")
       #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
       #endif
         .toolbar {
           ToolbarItemGroup {
+            VoicePickerView()
             ProviderPickerView(
               selectedProvider: appState.selectedProvider,
               onSelect: { provider in
                 Task { await appState.selectProvider(provider) }
               },
             )
-
-            VoicePickerView()
           }
         }
     }
