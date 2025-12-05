@@ -30,8 +30,6 @@ public final class MarvisTTS: Module {
   private let textTokenizer: any Tokenizer
   private let audioTokenizer: MimiTokenizer
   private let streamingDecoder: MimiStreamingDecoder
-  private var playback: AudioPlayback?
-  private let playbackEnabled: Bool
   private var boundVoice: MarvisEngine.Voice? = .conversationalA
   private var boundRefAudio: MLXArray?
   private var boundRefText: String?
@@ -44,11 +42,9 @@ public final class MarvisTTS: Module {
     repoId: String,
     promptURLs: [URL]? = nil,
     progressHandler: @escaping (Progress) -> Void,
-    playbackEnabled: Bool = true,
   ) async throws {
     model = try MarvisModel(config: config)
     _promptURLs = promptURLs
-    self.playbackEnabled = playbackEnabled
     textTokenizer = try await loadTokenizer(configuration: ModelConfiguration(id: repoId), hub: HubApi.shared)
     audioTokenizer = try await MimiTokenizer(Mimi.fromPretrained(progressHandler: progressHandler))
     streamingDecoder = MimiStreamingDecoder(audioTokenizer.codec)
@@ -57,22 +53,15 @@ public final class MarvisTTS: Module {
     super.init()
 
     try model.resetCaches()
-
-    if playbackEnabled {
-      playback = AudioPlayback(sampleRate: sampleRate)
-    } else {
-      playback = nil
-    }
   }
 
   convenience init(
     voice: MarvisEngine.Voice = .conversationalA,
     model: String = MarvisEngine.ModelVariant.default.repoId,
     progressHandler: @escaping (Progress) -> Void = { _ in },
-    playbackEnabled: Bool = true,
   ) async throws {
     let (args, prompts, weightFileURL) = try await Self.snapshotAndConfig(repoId: model, progressHandler: progressHandler)
-    try await self.init(config: args, repoId: model, promptURLs: prompts, progressHandler: progressHandler, playbackEnabled: playbackEnabled)
+    try await self.init(config: args, repoId: model, promptURLs: prompts, progressHandler: progressHandler)
     try installWeights(args: args, weightFileURL: weightFileURL)
 
     boundVoice = voice
@@ -85,10 +74,9 @@ public final class MarvisTTS: Module {
     refText: String,
     model: String = MarvisEngine.ModelVariant.default.repoId,
     progressHandler: @escaping (Progress) -> Void = { _ in },
-    playbackEnabled: Bool = true,
   ) async throws {
     let (args, prompts, weightFileURL) = try await Self.snapshotAndConfig(repoId: model, progressHandler: progressHandler)
-    try await self.init(config: args, repoId: model, promptURLs: prompts, progressHandler: progressHandler, playbackEnabled: playbackEnabled)
+    try await self.init(config: args, repoId: model, promptURLs: prompts, progressHandler: progressHandler)
     try installWeights(args: args, weightFileURL: weightFileURL)
 
     boundVoice = nil
@@ -100,19 +88,10 @@ public final class MarvisTTS: Module {
 // MARK: - Public API
 
 extension MarvisTTS {
-  /// Stops audio playback immediately
-  func stopPlayback() {
-    guard let playback else { return }
-    Task { await playback.stop() }
-  }
-
   /// Manually triggers memory cleanup for this TTS instance
   func cleanUpMemory() throws {
     try model.resetCaches()
     streamingDecoder.reset()
-    if let playback {
-      Task { await playback.stop() }
-    }
   }
 
   /// Generate audio from text
@@ -132,7 +111,6 @@ extension MarvisTTS {
       stream: false,
       streamingInterval: 0.5,
       onStreamingResult: nil,
-      enqueuePlayback: playbackEnabled,
     )
     return Self.mergeResults(results)
   }
@@ -156,7 +134,6 @@ extension MarvisTTS {
       stream: true,
       streamingInterval: interval,
       onStreamingResult: onResult,
-      enqueuePlayback: playbackEnabled,
     )
   }
 
@@ -449,7 +426,6 @@ private extension MarvisTTS {
     stream: Bool,
     streamingInterval: Double,
     onStreamingResult: (@Sendable (GenerationResult) -> Void)?,
-    enqueuePlayback: Bool,
   ) throws -> [GenerationResult] {
     guard voice != nil || refAudio != nil else {
       throw MarvisTTSError.invalidArgument("`voice` or `refAudio`/`refText` must be specified.")
@@ -479,7 +455,6 @@ private extension MarvisTTS {
         streamingIntervalTokens: intervalTokens,
         sampler: sampleFn,
         onStreamingResult: onStreamingResult,
-        enqueuePlayback: enqueuePlayback,
       )
       results.append(contentsOf: r)
     }
@@ -498,7 +473,6 @@ private extension MarvisTTS {
     streamingIntervalTokens: Int,
     sampler sampleFn: (MLXArray) -> MLXArray,
     onStreamingResult: (@Sendable (GenerationResult) -> Void)?,
-    enqueuePlayback: Bool,
   ) throws -> [GenerationResult] {
     var results: [GenerationResult] = []
 
@@ -545,7 +519,7 @@ private extension MarvisTTS {
 
       if stream, (generatedCount - yieldedCount) >= streamingIntervalTokens {
         yieldedCount = generatedCount
-        let gr = generateResultChunk(samplesFrames, start: startTime, streaming: true, enqueuePlayback: enqueuePlayback)
+        let gr = generateResultChunk(samplesFrames, start: startTime, streaming: true)
         results.append(gr)
         onStreamingResult?(gr)
         samplesFrames.removeAll(keepingCapacity: true)
@@ -554,14 +528,14 @@ private extension MarvisTTS {
     }
 
     if !samplesFrames.isEmpty {
-      let gr = generateResultChunk(samplesFrames, start: startTime, streaming: stream, enqueuePlayback: enqueuePlayback)
+      let gr = generateResultChunk(samplesFrames, start: startTime, streaming: stream)
       if stream { onStreamingResult?(gr) } else { results.append(gr) }
     }
 
     return results
   }
 
-  func generateResultChunk(_ frames: [MLXArray], start: CFTimeInterval, streaming: Bool, enqueuePlayback: Bool) -> GenerationResult {
+  func generateResultChunk(_ frames: [MLXArray], start: CFTimeInterval, streaming: Bool) -> GenerationResult {
     let frameCount = frames.count
 
     var stacked = stacked(frames, axis: 0) // [F, 1, K]
@@ -580,7 +554,7 @@ private extension MarvisTTS {
     let audioSeconds = Double(sampleCount) / Double(sr)
     let rtf = (audioSeconds > 0) ? elapsed / audioSeconds : 0.0
 
-    let result = GenerationResult(
+    return GenerationResult(
       audio: audio.asArray(Float32.self),
       sampleRate: sr,
       sampleCount: sampleCount,
@@ -589,14 +563,6 @@ private extension MarvisTTS {
       realTimeFactor: (rtf * 100).rounded() / 100,
       processingTime: elapsed,
     )
-
-    if enqueuePlayback, let playback {
-      let audio = result.audio
-      let prebuffer = streaming ? 2.0 : 0.0
-      Task { await playback.enqueue(audio, prebufferSeconds: prebuffer) }
-    }
-
-    return result
   }
 
   // MARK: - Text Processing

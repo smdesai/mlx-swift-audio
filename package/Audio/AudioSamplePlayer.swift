@@ -65,7 +65,7 @@ final class AudioSamplePlayer {
 
   /// Create an audio engine with the specified sample rate
   /// - Parameter sampleRate: Sample rate in Hz (default: 24000)
-  init(sampleRate: Int = TTSConstants.Audio.kokoroSampleRate) {
+  init(sampleRate: Int = 24000) {
     self.sampleRate = sampleRate
     setup()
   }
@@ -109,7 +109,10 @@ final class AudioSamplePlayer {
   func play(samples: [Float], volumeBoost: Float = TTSConstants.Audio.volumeBoostFactor) async {
     guard !samples.isEmpty else { return }
 
-    await reset()
+    // Stop any current playback and reset counters (but don't restart engine)
+    await stop()
+    await resetBufferCounters()
+    resetEngineIfNeeded()
 
     guard let buffer = createBuffer(from: samples, volumeBoost: volumeBoost) else {
       Log.audio.error("Failed to create audio buffer")

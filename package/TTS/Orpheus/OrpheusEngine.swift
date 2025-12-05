@@ -49,6 +49,7 @@ public final class OrpheusEngine: TTSEngine {
   // MARK: - Private Properties
 
   @ObservationIgnored private var orpheusTTS: OrpheusTTS?
+  @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.orpheus.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
 
   // MARK: - Initialization
@@ -88,18 +89,37 @@ public final class OrpheusEngine: TTSEngine {
     generationTask?.cancel()
     generationTask = nil
     isGenerating = false
+
+    await audioPlayer.stop()
     isPlaying = false
 
     Log.tts.debug("OrpheusEngine stopped")
   }
 
-  public func cleanup() async throws {
+  public func unload() async {
     await stop()
 
     orpheusTTS = nil
     isLoaded = false
 
-    Log.tts.debug("OrpheusEngine cleaned up")
+    Log.tts.debug("OrpheusEngine unloaded")
+  }
+
+  public func cleanup() async throws {
+    await unload()
+  }
+
+  // MARK: - Playback
+
+  public func play(_ audio: AudioResult) async {
+    guard case let .samples(samples, _, _) = audio else {
+      Log.audio.warning("Cannot play AudioResult.file - use AudioFilePlayer instead")
+      return
+    }
+
+    isPlaying = true
+    await audioPlayer.play(samples: samples)
+    isPlaying = false
   }
 
   // MARK: - Generation
@@ -145,15 +165,15 @@ public final class OrpheusEngine: TTSEngine {
 
       isGenerating = false
 
-      let audioDuration = Double(samples.count) / Double(TTSConstants.Audio.orpheusSampleRate)
+      let audioDuration = Double(samples.count) / Double(provider.sampleRate)
       let rtf = generationTime / audioDuration
       Log.tts.rtf("Orpheus", rtf: rtf)
 
       do {
         let fileURL = try AudioFileWriter.save(
           samples: samples,
-          sampleRate: TTSConstants.Audio.orpheusSampleRate,
-          filename: TTSConstants.FileNames.orpheusOutput.replacingOccurrences(of: ".wav", with: ""),
+          sampleRate: provider.sampleRate,
+          filename: TTSConstants.outputFilename,
         )
         lastGeneratedAudioURL = fileURL
       } catch {
@@ -162,7 +182,7 @@ public final class OrpheusEngine: TTSEngine {
 
       return .samples(
         data: samples,
-        sampleRate: TTSConstants.Audio.orpheusSampleRate,
+        sampleRate: provider.sampleRate,
         processingTime: generationTime,
       )
 
@@ -182,8 +202,6 @@ public final class OrpheusEngine: TTSEngine {
     voice: Voice,
   ) async throws {
     let audio = try await generate(text, voice: voice)
-    isPlaying = true
-    await audio.play()
-    isPlaying = false
+    await play(audio)
   }
 }

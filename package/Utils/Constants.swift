@@ -11,16 +11,10 @@ import Foundation
 public enum TTSConstants {
   // MARK: - Audio
 
+  /// Default output filename for generated audio (without extension)
+  public static let outputFilename = "tts_output"
+
   public enum Audio {
-    /// Default sample rate for Kokoro TTS (Hz)
-    public static let kokoroSampleRate = 24000
-
-    /// Default sample rate for Orpheus TTS (Hz)
-    public static let orpheusSampleRate = 24000
-
-    /// Default sample rate for Marvis TTS (Hz)
-    public static let marvisSampleRate = 24000
-
     /// eSpeak-NG sample rate (Hz)
     public static let espeakSampleRate = 22050
 
@@ -95,18 +89,5 @@ public enum TTSConstants {
       public static let high = 24
       public static let maximum = 32
     }
-  }
-
-  // MARK: - File Names
-
-  public enum FileNames {
-    /// Default output filename for Kokoro
-    public static let kokoroOutput = "kokoro_output.wav"
-
-    /// Default output filename for Orpheus
-    public static let orpheusOutput = "orpheus_output.wav"
-
-    /// Default output filename for Marvis
-    public static let marvisOutput = "marvis_output.wav"
   }
 }

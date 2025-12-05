@@ -93,6 +93,7 @@ public final class ChatterboxEngine: TTSEngine {
   // MARK: - Private Properties
 
   @ObservationIgnored private var session: ChatterboxSession?
+  @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.chatterbox.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
   @ObservationIgnored private var defaultReferenceAudio: ChatterboxReferenceAudio?
 
@@ -134,19 +135,41 @@ public final class ChatterboxEngine: TTSEngine {
     generationTask?.cancel()
     generationTask = nil
     isGenerating = false
+
+    await audioPlayer.stop()
     isPlaying = false
 
     Log.tts.debug("ChatterboxEngine stopped")
   }
 
-  public func cleanup() async throws {
+  public func unload() async {
     await stop()
 
+    // Clear model but preserve prepared reference audio (expensive to recompute)
     session = nil
     isLoaded = false
-    defaultReferenceAudio = nil
 
-    Log.tts.debug("ChatterboxEngine cleaned up")
+    Log.tts.debug("ChatterboxEngine unloaded (reference audio preserved)")
+  }
+
+  public func cleanup() async throws {
+    await unload()
+
+    // Also clear prepared reference audio (expensive to recompute, but full cleanup)
+    defaultReferenceAudio = nil
+  }
+
+  // MARK: - Playback
+
+  public func play(_ audio: AudioResult) async {
+    guard case let .samples(samples, _, _) = audio else {
+      Log.audio.warning("Cannot play AudioResult.file - use AudioFilePlayer instead")
+      return
+    }
+
+    isPlaying = true
+    await audioPlayer.play(samples: samples)
+    isPlaying = false
   }
 
   // MARK: - Reference Audio Preparation
@@ -385,7 +408,7 @@ public final class ChatterboxEngine: TTSEngine {
         let fileURL = try AudioFileWriter.save(
           samples: samples,
           sampleRate: ChatterboxS3GenSr,
-          filename: "chatterbox_output",
+          filename: TTSConstants.outputFilename,
         )
         lastGeneratedAudioURL = fileURL
       } catch {
@@ -415,8 +438,6 @@ public final class ChatterboxEngine: TTSEngine {
     referenceAudio: ChatterboxReferenceAudio? = nil,
   ) async throws {
     let audio = try await generate(text, referenceAudio: referenceAudio)
-    isPlaying = true
-    await audio.play()
-    isPlaying = false
+    await play(audio)
   }
 }

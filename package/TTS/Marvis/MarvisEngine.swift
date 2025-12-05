@@ -59,10 +59,6 @@ actor MarvisTTSSession {
     }
   }
 
-  func stopPlayback() {
-    tts?.stopPlayback()
-  }
-
   func cleanUp() throws {
     try tts?.cleanUpMemory()
     tts = nil
@@ -142,7 +138,7 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
   // MARK: - Private Properties
 
   @ObservationIgnored private let session = MarvisTTSSession()
-  @ObservationIgnored private var audioPlayer: AudioSamplePlayer?
+  @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.marvis.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
   @ObservationIgnored private var lastModelVariant: ModelVariant?
 
@@ -179,8 +175,6 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
         progressHandler: progressHandler ?? { _ in },
       )
 
-      audioPlayer = AudioSamplePlayer(sampleRate: TTSConstants.Audio.marvisSampleRate)
-
       lastModelVariant = modelVariant
       isLoaded = true
       Log.model.info("Marvis TTS model loaded successfully")
@@ -194,24 +188,39 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
     generationTask?.cancel()
     generationTask = nil
 
-    await session.stopPlayback()
-
-    await audioPlayer?.stop()
+    await audioPlayer.stop()
     isGenerating = false
     isPlaying = false
 
     Log.tts.debug("MarvisEngine stopped")
   }
 
-  public func cleanup() async throws {
+  public func unload() async {
     await stop()
 
-    try await session.cleanUp()
-    audioPlayer = nil
+    // Clear model but preserve audio player
+    try? await session.cleanUp()
     lastModelVariant = nil
     isLoaded = false
 
-    Log.tts.debug("MarvisEngine cleaned up")
+    Log.tts.debug("MarvisEngine unloaded")
+  }
+
+  public func cleanup() async throws {
+    await unload()
+  }
+
+  // MARK: - Playback
+
+  public func play(_ audio: AudioResult) async {
+    guard case let .samples(samples, _, _) = audio else {
+      Log.audio.warning("Cannot play AudioResult.file - use AudioFilePlayer instead")
+      return
+    }
+
+    isPlaying = true
+    await audioPlayer.play(samples: samples)
+    isPlaying = false
   }
 
   // MARK: - Generation
@@ -255,7 +264,7 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
         let fileURL = try AudioFileWriter.save(
           samples: result.audio,
           sampleRate: result.sampleRate,
-          filename: TTSConstants.FileNames.marvisOutput.replacingOccurrences(of: ".wav", with: ""),
+          filename: TTSConstants.outputFilename,
         )
         lastGeneratedAudioURL = fileURL
       } catch {
@@ -284,9 +293,7 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
     voice: Voice,
   ) async throws {
     let audio = try await generate(text, voice: voice)
-    isPlaying = true
-    await audio.play()
-    isPlaying = false
+    await play(audio)
   }
 
   // MARK: - Streaming
@@ -368,10 +375,6 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
     _ text: String,
     voice: Voice,
   ) async throws -> AudioResult {
-    guard let audioPlayer else {
-      throw TTSError.modelNotLoaded
-    }
-
     isPlaying = true
     var allSamples: [Float] = []
     var totalProcessingTime: TimeInterval = 0
@@ -390,8 +393,8 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
         do {
           let fileURL = try AudioFileWriter.save(
             samples: allSamples,
-            sampleRate: TTSConstants.Audio.marvisSampleRate,
-            filename: TTSConstants.FileNames.marvisOutput.replacingOccurrences(of: ".wav", with: ""),
+            sampleRate: provider.sampleRate,
+            filename: TTSConstants.outputFilename,
           )
           lastGeneratedAudioURL = fileURL
         } catch {
@@ -401,7 +404,7 @@ public final class MarvisEngine: TTSEngine, StreamingTTSEngine {
 
       return .samples(
         data: allSamples,
-        sampleRate: TTSConstants.Audio.marvisSampleRate,
+        sampleRate: provider.sampleRate,
         processingTime: totalProcessingTime,
       )
     } catch {

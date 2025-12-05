@@ -68,6 +68,14 @@ final class EngineManager {
   /// Switch to a different TTS provider
   func selectProvider(_ provider: TTSProvider) async {
     guard provider != selectedProvider else { return }
+
+    // Unload the previous engine to free GPU memory
+    // (preserves cached data like speaker profiles for faster reload)
+    let previousEngine = currentEngine
+    if previousEngine.isLoaded {
+      await previousEngine.unload()
+    }
+
     selectedProvider = provider
     error = nil
   }
@@ -86,42 +94,17 @@ final class EngineManager {
     MLX.GPU.set(cacheLimit: TTSConstants.Memory.gpuCacheLimit)
 
     do {
-      switch selectedProvider {
-        case .kokoro:
-          try await kokoroEngine.load { [weak self] progress in
-            Task { @MainActor in
-              self?.loadingProgress = progress.fractionCompleted
-            }
-          }
-        case .orpheus:
-          try await orpheusEngine.load { [weak self] progress in
-            Task { @MainActor in
-              self?.loadingProgress = progress.fractionCompleted
-            }
-          }
-        case .marvis:
-          try await marvisEngine.load { [weak self] progress in
-            Task { @MainActor in
-              self?.loadingProgress = progress.fractionCompleted
-            }
-          }
-        case .outetts:
-          try await outeTTSEngine.load { [weak self] progress in
-            Task { @MainActor in
-              self?.loadingProgress = progress.fractionCompleted
-            }
-          }
-        case .chatterbox:
-          try await chatterboxEngine.load { [weak self] progress in
-            Task { @MainActor in
-              self?.loadingProgress = progress.fractionCompleted
-            }
-          }
-          // Load default reference audio if none is set
-          if chatterboxReferenceAudio == nil {
-            chatterboxReferenceAudio = try await chatterboxEngine.prepareDefaultReferenceAudio()
-          }
+      try await currentEngine.load { [weak self] progress in
+        Task { @MainActor in
+          self?.loadingProgress = progress.fractionCompleted
+        }
       }
+
+      // Chatterbox-specific: load default reference audio if needed
+      if selectedProvider == .chatterbox, chatterboxReferenceAudio == nil {
+        chatterboxReferenceAudio = try await chatterboxEngine.prepareDefaultReferenceAudio()
+      }
+
       isLoading = false
       loadingProgress = 1.0
     } catch {
@@ -191,9 +174,9 @@ final class EngineManager {
     }
   }
 
-  /// Play audio result
+  /// Play audio result using the current engine's player
   func play(_ audio: AudioResult) async {
-    await audio.play()
+    await currentEngine.play(audio)
   }
 
   /// Stop generation and playback

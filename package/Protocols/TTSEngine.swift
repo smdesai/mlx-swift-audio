@@ -46,8 +46,25 @@ public protocol TTSEngine: Observable {
   /// Stop any ongoing generation or playback
   func stop() async
 
-  /// Clean up resources (model weights, audio buffers, etc.)
+  /// Unload model weights to free GPU memory.
+  ///
+  /// Preserves cached data (speaker profiles, reference audio, text processing)
+  /// for faster reload. Use this when switching between engines to free memory
+  /// while keeping expensive pre-computed data.
+  func unload() async
+
+  /// Full cleanup - releases everything including cached data.
+  ///
+  /// Use before deallocating the engine or when you need to free all resources.
   func cleanup() async throws
+
+  // MARK: - Playback
+
+  /// Play an audio result using the engine's internal player.
+  ///
+  /// Each engine maintains its own audio player, avoiding the overhead of
+  /// creating a new player for each playback.
+  func play(_ audio: AudioResult) async
 }
 
 // MARK: - Default Implementations

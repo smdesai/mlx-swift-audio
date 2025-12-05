@@ -61,6 +61,19 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
+  // MARK: - Audio Properties
+
+  /// Sample rate for this provider's audio output (Hz)
+  public var sampleRate: Int {
+    switch self {
+      case .kokoro: 24000
+      case .orpheus: 24000
+      case .marvis: 24000
+      case .outetts: 24000
+      case .chatterbox: 24000
+    }
+  }
+
   // MARK: - Feature Flags
 
   /// Whether this provider supports speed adjustment

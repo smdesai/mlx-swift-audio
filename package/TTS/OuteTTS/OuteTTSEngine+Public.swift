@@ -34,9 +34,10 @@ public final class OuteTTSEngine: TTSEngine {
   // MARK: - Private Properties
 
   @ObservationIgnored private var outeTTS: OuteTTSSession?
+  @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.outetts.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
 
-  private static let sampleRate = 24000
+  private static let sampleRate = TTSProvider.outetts.sampleRate
 
   // MARK: - Initialization
 
@@ -75,18 +76,37 @@ public final class OuteTTSEngine: TTSEngine {
     generationTask?.cancel()
     generationTask = nil
     isGenerating = false
+
+    await audioPlayer.stop()
     isPlaying = false
 
     Log.tts.debug("OuteTTSEngine stopped")
   }
 
-  public func cleanup() async throws {
+  public func unload() async {
     await stop()
 
     outeTTS = nil
     isLoaded = false
 
-    Log.tts.debug("OuteTTSEngine cleaned up")
+    Log.tts.debug("OuteTTSEngine unloaded")
+  }
+
+  public func cleanup() async throws {
+    await unload()
+  }
+
+  // MARK: - Playback
+
+  public func play(_ audio: AudioResult) async {
+    guard case let .samples(samples, _, _) = audio else {
+      Log.audio.warning("Cannot play AudioResult.file - use AudioFilePlayer instead")
+      return
+    }
+
+    isPlaying = true
+    await audioPlayer.play(samples: samples)
+    isPlaying = false
   }
 
   // MARK: - Generation
@@ -140,7 +160,7 @@ public final class OuteTTSEngine: TTSEngine {
         let fileURL = try AudioFileWriter.save(
           samples: result.audio,
           sampleRate: Self.sampleRate,
-          filename: "outetts_output",
+          filename: TTSConstants.outputFilename,
         )
         lastGeneratedAudioURL = fileURL
       } catch {
@@ -169,8 +189,6 @@ public final class OuteTTSEngine: TTSEngine {
     speaker: OuteTTSSpeakerProfile? = nil,
   ) async throws {
     let audio = try await generate(text, speaker: speaker)
-    isPlaying = true
-    await audio.play()
-    isPlaying = false
+    await play(audio)
   }
 }

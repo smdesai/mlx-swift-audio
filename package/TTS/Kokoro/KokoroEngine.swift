@@ -94,7 +94,7 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
   // MARK: - Private Properties
 
   @ObservationIgnored private var kokoroTTS: KokoroTTS?
-  @ObservationIgnored private var audioPlayer: AudioSamplePlayer?
+  @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.kokoro.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
 
   // MARK: - Initialization
@@ -117,12 +117,13 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
 
     Log.model.info("Loading Kokoro TTS model...")
 
-    kokoroTTS = KokoroTTS(
-      repoId: KokoroWeightLoader.defaultRepoId,
-      progressHandler: progressHandler ?? { _ in },
-    )
-
-    audioPlayer = AudioSamplePlayer(sampleRate: TTSConstants.Audio.kokoroSampleRate)
+    // Reuse existing instance (preserves text processing after unload)
+    if kokoroTTS == nil {
+      kokoroTTS = KokoroTTS(
+        repoId: KokoroWeightLoader.defaultRepoId,
+        progressHandler: progressHandler ?? { _ in },
+      )
+    }
 
     isLoaded = true
     Log.model.info("Kokoro TTS model loaded successfully")
@@ -133,21 +134,38 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
     generationTask = nil
     isGenerating = false
 
-    await audioPlayer?.stop()
+    await audioPlayer.stop()
     isPlaying = false
 
     Log.tts.debug("KokoroEngine stopped")
   }
 
+  public func unload() async {
+    await teardown(preserveTextProcessing: true)
+  }
+
   public func cleanup() async throws {
-    await stop()
-
-    await kokoroTTS?.resetModel(preserveTextProcessing: false)
+    await teardown(preserveTextProcessing: false)
     kokoroTTS = nil
-    audioPlayer = nil
-    isLoaded = false
+  }
 
-    Log.tts.debug("KokoroEngine cleaned up")
+  private func teardown(preserveTextProcessing: Bool) async {
+    await stop()
+    await kokoroTTS?.resetModel(preserveTextProcessing: preserveTextProcessing)
+    isLoaded = false
+  }
+
+  // MARK: - Playback
+
+  public func play(_ audio: AudioResult) async {
+    guard case let .samples(samples, _, _) = audio else {
+      Log.audio.warning("Cannot play AudioResult.file - use AudioFilePlayer instead")
+      return
+    }
+
+    isPlaying = true
+    await audioPlayer.play(samples: samples)
+    isPlaying = false
   }
 
   // MARK: - Generation
@@ -206,8 +224,8 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
       do {
         let fileURL = try AudioFileWriter.save(
           samples: allSamples,
-          sampleRate: TTSConstants.Audio.kokoroSampleRate,
-          filename: TTSConstants.FileNames.kokoroOutput.replacingOccurrences(of: ".wav", with: ""),
+          sampleRate: provider.sampleRate,
+          filename: TTSConstants.outputFilename,
         )
         lastGeneratedAudioURL = fileURL
       } catch {
@@ -216,7 +234,7 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
 
       return .samples(
         data: allSamples,
-        sampleRate: TTSConstants.Audio.kokoroSampleRate,
+        sampleRate: provider.sampleRate,
         processingTime: generationTime,
       )
 
@@ -238,9 +256,7 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
     speed: Float = 1.0,
   ) async throws {
     let audio = try await generate(text, voice: voice, speed: speed)
-    isPlaying = true
-    await audio.play()
-    isPlaying = false
+    await play(audio)
   }
 
   // MARK: - Streaming
@@ -297,7 +313,7 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
 
             let chunk = AudioChunk(
               samples: samples,
-              sampleRate: TTSConstants.Audio.kokoroSampleRate,
+              sampleRate: provider.sampleRate,
               isLast: false,
               processingTime: Date().timeIntervalSince(startTime),
             )
@@ -327,10 +343,6 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
     voice: Voice,
     speed: Float = 1.0,
   ) async throws -> AudioResult {
-    guard let audioPlayer else {
-      throw TTSError.modelNotLoaded
-    }
-
     isPlaying = true
     var allSamples: [Float] = []
     var totalProcessingTime: TimeInterval = 0
@@ -349,8 +361,8 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
         do {
           let fileURL = try AudioFileWriter.save(
             samples: allSamples,
-            sampleRate: TTSConstants.Audio.kokoroSampleRate,
-            filename: TTSConstants.FileNames.kokoroOutput.replacingOccurrences(of: ".wav", with: ""),
+            sampleRate: provider.sampleRate,
+            filename: TTSConstants.outputFilename,
           )
           lastGeneratedAudioURL = fileURL
         } catch {
@@ -360,7 +372,7 @@ public final class KokoroEngine: TTSEngine, StreamingTTSEngine {
 
       return .samples(
         data: allSamples,
-        sampleRate: TTSConstants.Audio.kokoroSampleRate,
+        sampleRate: provider.sampleRate,
         processingTime: totalProcessingTime,
       )
     } catch {
