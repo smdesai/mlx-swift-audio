@@ -110,6 +110,7 @@ public final class KokoroEngine: TTSEngine {
   @ObservationIgnored private var kokoroTTS: KokoroTTS?
   @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.kokoro.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
+  @ObservationIgnored private var streamingCancelled: Bool = false
 
   // MARK: - Initialization
 
@@ -146,6 +147,7 @@ public final class KokoroEngine: TTSEngine {
   }
 
   public func stop() async {
+    streamingCancelled = true
     generationTask?.cancel()
     generationTask = nil
     isGenerating = false
@@ -362,12 +364,17 @@ public final class KokoroEngine: TTSEngine {
     voice: Voice,
     speed: Float = 1.0,
   ) async throws -> AudioResult {
+    // Stop any previous playback
+    await audioPlayer.stop()
+    streamingCancelled = false
+
     isPlaying = true
     var allSamples: [Float] = []
     var totalProcessingTime: TimeInterval = 0
 
     do {
       for try await chunk in generateStreaming(text, voice: voice, speed: speed) {
+        if streamingCancelled { break }
         allSamples.append(contentsOf: chunk.samples)
         totalProcessingTime = chunk.processingTime
         audioPlayer.enqueue(samples: chunk.samples, prebufferSeconds: 0)

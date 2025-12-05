@@ -30,12 +30,24 @@ func sentenceStreamingGenerate(
   }
 
   return AsyncThrowingStream { continuation in
-    Task { @MainActor in
+    let task = Task { @MainActor in
       let startTime = Date()
 
       for (index, sentence) in sentences.enumerated() {
+        // Check for cancellation before generating each sentence
+        if Task.isCancelled {
+          continuation.finish()
+          return
+        }
+
         do {
           let samples = try await generate(sentence)
+
+          // Check again after generation (which may take a while)
+          if Task.isCancelled {
+            continuation.finish()
+            return
+          }
 
           let chunk = AudioChunk(
             samples: samples,
@@ -53,6 +65,10 @@ func sentenceStreamingGenerate(
       }
 
       continuation.finish()
+    }
+
+    continuation.onTermination = { _ in
+      task.cancel()
     }
   }
 }

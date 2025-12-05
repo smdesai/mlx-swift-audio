@@ -89,6 +89,7 @@ public final class ChatterboxEngine: TTSEngine {
   @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.chatterbox.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
   @ObservationIgnored private var defaultReferenceAudio: ChatterboxReferenceAudio?
+  @ObservationIgnored private var streamingCancelled: Bool = false
 
   // MARK: - Initialization
 
@@ -125,6 +126,7 @@ public final class ChatterboxEngine: TTSEngine {
   }
 
   public func stop() async {
+    streamingCancelled = true
     generationTask?.cancel()
     generationTask = nil
     isGenerating = false
@@ -443,7 +445,7 @@ public final class ChatterboxEngine: TTSEngine {
     // We need to prepare the reference audio before streaming starts
     // This requires an async setup, so we handle it inside the stream
     AsyncThrowingStream { continuation in
-      Task { @MainActor [weak self] in
+      let task = Task { @MainActor [weak self] in
         guard let self else {
           continuation.finish()
           return
@@ -495,6 +497,12 @@ public final class ChatterboxEngine: TTSEngine {
         let startTime = Date()
 
         for (index, sentence) in sentences.enumerated() {
+          // Check for cancellation before generating each sentence
+          if Task.isCancelled {
+            continuation.finish()
+            return
+          }
+
           let result = await chatterboxTTS.generate(
             text: sentence,
             conditionals: ref.conditionals,
@@ -506,6 +514,12 @@ public final class ChatterboxEngine: TTSEngine {
             topP: topP,
             maxNewTokens: maxNewTokens,
           )
+
+          // Check again after generation
+          if Task.isCancelled {
+            continuation.finish()
+            return
+          }
 
           let chunk = AudioChunk(
             samples: result.audio,
@@ -519,6 +533,10 @@ public final class ChatterboxEngine: TTSEngine {
         }
 
         continuation.finish()
+      }
+
+      continuation.onTermination = { _ in
+        task.cancel()
       }
     }
   }
@@ -536,6 +554,10 @@ public final class ChatterboxEngine: TTSEngine {
       try await load()
     }
 
+    // Stop any previous playback
+    await audioPlayer.stop()
+    streamingCancelled = false
+
     isPlaying = true
     isGenerating = true
     var allSamples: [Float] = []
@@ -543,6 +565,7 @@ public final class ChatterboxEngine: TTSEngine {
 
     do {
       for try await chunk in generateStreaming(text, referenceAudio: referenceAudio) {
+        if streamingCancelled { break }
         allSamples.append(contentsOf: chunk.samples)
         totalProcessingTime = chunk.processingTime
         audioPlayer.enqueue(samples: chunk.samples, prebufferSeconds: 0)

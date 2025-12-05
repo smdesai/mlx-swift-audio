@@ -29,6 +29,7 @@ public final class OuteTTSEngine: TTSEngine {
   @ObservationIgnored private var outeTTS: OuteTTS?
   @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.outetts.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
+  @ObservationIgnored private var streamingCancelled: Bool = false
 
   // MARK: - Initialization
 
@@ -64,6 +65,7 @@ public final class OuteTTSEngine: TTSEngine {
   }
 
   public func stop() async {
+    streamingCancelled = true
     generationTask?.cancel()
     generationTask = nil
     isGenerating = false
@@ -216,6 +218,10 @@ public final class OuteTTSEngine: TTSEngine {
       try await load()
     }
 
+    // Stop any previous playback
+    await audioPlayer.stop()
+    streamingCancelled = false
+
     isPlaying = true
     isGenerating = true
     var allSamples: [Float] = []
@@ -223,6 +229,7 @@ public final class OuteTTSEngine: TTSEngine {
 
     do {
       for try await chunk in generateStreaming(text, speaker: speaker) {
+        if streamingCancelled { break }
         allSamples.append(contentsOf: chunk.samples)
         totalProcessingTime = chunk.processingTime
         audioPlayer.enqueue(samples: chunk.samples, prebufferSeconds: 0)

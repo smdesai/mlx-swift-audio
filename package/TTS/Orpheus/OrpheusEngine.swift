@@ -54,6 +54,7 @@ public final class OrpheusEngine: TTSEngine {
   @ObservationIgnored private var orpheusTTS: OrpheusTTS?
   @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.orpheus.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
+  @ObservationIgnored private var streamingCancelled: Bool = false
 
   // MARK: - Initialization
 
@@ -89,6 +90,7 @@ public final class OrpheusEngine: TTSEngine {
   }
 
   public func stop() async {
+    streamingCancelled = true
     generationTask?.cancel()
     generationTask = nil
     isGenerating = false
@@ -241,6 +243,10 @@ public final class OrpheusEngine: TTSEngine {
       try await load()
     }
 
+    // Stop any previous playback
+    await audioPlayer.stop()
+    streamingCancelled = false
+
     isPlaying = true
     isGenerating = true
     var allSamples: [Float] = []
@@ -248,6 +254,7 @@ public final class OrpheusEngine: TTSEngine {
 
     do {
       for try await chunk in generateStreaming(text, voice: voice) {
+        if streamingCancelled { break }
         allSamples.append(contentsOf: chunk.samples)
         totalProcessingTime = chunk.processingTime
         audioPlayer.enqueue(samples: chunk.samples, prebufferSeconds: 0)

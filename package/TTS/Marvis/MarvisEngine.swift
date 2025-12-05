@@ -88,6 +88,7 @@ public final class MarvisEngine: TTSEngine {
   @ObservationIgnored private let audioPlayer = AudioSamplePlayer(sampleRate: TTSProvider.marvis.sampleRate)
   @ObservationIgnored private var generationTask: Task<Void, Never>?
   @ObservationIgnored private var lastModelVariant: ModelVariant?
+  @ObservationIgnored private var streamingCancelled: Bool = false
 
   // MARK: - Initialization
 
@@ -130,6 +131,7 @@ public final class MarvisEngine: TTSEngine {
   }
 
   public func stop() async {
+    streamingCancelled = true
     generationTask?.cancel()
     generationTask = nil
 
@@ -264,7 +266,7 @@ public final class MarvisEngine: TTSEngine {
     }
 
     return AsyncThrowingStream { continuation in
-      Task { @MainActor [weak self] in
+      let task = Task { @MainActor [weak self] in
         guard let self else {
           continuation.finish()
           return
@@ -299,6 +301,13 @@ public final class MarvisEngine: TTSEngine {
           )
 
           for try await result in stream {
+            // Check for cancellation
+            if Task.isCancelled {
+              isGenerating = false
+              continuation.finish()
+              return
+            }
+
             if isFirst {
               generationTime = result.processingTime
               isFirst = false
@@ -322,6 +331,10 @@ public final class MarvisEngine: TTSEngine {
           continuation.finish(throwing: TTSError.generationFailed(underlying: error))
         }
       }
+
+      continuation.onTermination = { _ in
+        task.cancel()
+      }
     }
   }
 
@@ -334,12 +347,17 @@ public final class MarvisEngine: TTSEngine {
     _ text: String,
     voice: Voice,
   ) async throws -> AudioResult {
+    // Stop any previous playback
+    await audioPlayer.stop()
+    streamingCancelled = false
+
     isPlaying = true
     var allSamples: [Float] = []
     var totalProcessingTime: TimeInterval = 0
 
     do {
       for try await chunk in generateStreaming(text, voice: voice) {
+        if streamingCancelled { break }
         allSamples.append(contentsOf: chunk.samples)
         totalProcessingTime = chunk.processingTime
         audioPlayer.enqueue(samples: chunk.samples)

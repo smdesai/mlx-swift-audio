@@ -69,11 +69,12 @@ final class EngineManager {
   func selectProvider(_ provider: TTSProvider) async {
     guard provider != selectedProvider else { return }
 
-    // Unload the previous engine to free GPU memory
-    // (preserves cached data like speaker profiles for faster reload)
+    // Stop playback and unload the previous engine to free GPU memory
     let previousEngine = currentEngine
     if previousEngine.isLoaded {
-      await previousEngine.unload()
+      await previousEngine.unload() // unload() calls stop() internally
+    } else {
+      await previousEngine.stop() // Just stop playback if not loaded
     }
 
     selectedProvider = provider
