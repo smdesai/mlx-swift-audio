@@ -168,8 +168,6 @@ public final class SentenceTokenizer {
 
   private static func detectScriptType(language: NLLanguage?) -> ScriptType {
     guard let language else { return .other }
-
-    // The languages supoorted by Kokoro 1.0
     switch language {
       case .simplifiedChinese, .traditionalChinese, .japanese:
         return .cjk

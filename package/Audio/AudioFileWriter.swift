@@ -43,7 +43,7 @@ public enum AudioFileWriter {
   /// Save audio samples to a file
   /// - Parameters:
   ///   - samples: Audio samples as Float array
-  ///   - sampleRate: Sample rate (e.g., 24000 for Kokoro)
+  ///   - sampleRate: Sample rate (e.g., 24000)
   ///   - directory: Target directory URL (defaults to documents directory)
   ///   - filename: Base filename without extension
   ///   - format: Output format (default: .wav for compatibility)

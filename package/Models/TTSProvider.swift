@@ -10,9 +10,7 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
 
   public var id: String { rawValue }
 
-  // MARK: - Display Properties
-
-  /// Human-readable name for UI display
+  /// Canonical display name with proper casing/branding
   public var displayName: String {
     switch self {
       case .outetts: "OuteTTS"
@@ -21,48 +19,12 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  /// Description of the provider's capabilities
-  public var description: String {
-    switch self {
-      case .kokoro:
-        "Fast, lightweight TTS with many voices"
-      case .orpheus:
-        "High quality with emotional expressions"
-      case .marvis:
-        "Advanced conversational TTS with streaming"
-      case .outetts:
-        "TTS with speaker profiles"
-      case .chatterbox:
-        "TTS with reference audio support"
-    }
-  }
-
-  /// Status message shown in the UI (warnings, tips, etc.)
-  public var statusMessage: String {
-    switch self {
-      case .kokoro:
-        ""
-      case .orpheus:
-        "Supports expressions: <laugh>, <chuckle>, <sigh>, <cough>, <sniffle>, <groan>, <yawn>, <gasp>"
-      case .marvis:
-        "Marvis: Advanced conversational TTS with streaming support.\n\nNote: Downloads model weights on first use."
-      case .outetts:
-        "OuteTTS: Supports custom speaker profiles."
-      case .chatterbox:
-        "Chatterbox: TTS with reference audio support.\n\nNote: Downloads model weights on first use."
-    }
-  }
-
   // MARK: - Audio Properties
 
   /// Sample rate for this provider's audio output (Hz)
   public var sampleRate: Int {
     switch self {
-      case .kokoro: 24000
-      case .orpheus: 24000
-      case .marvis: 24000
-      case .outetts: 24000
-      case .chatterbox: 24000
+      default: 24000
     }
   }
 
@@ -70,20 +32,33 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
 
   /// Whether this provider supports speed adjustment
   public var supportsSpeed: Bool {
-    self == .kokoro
+    switch self {
+      case .kokoro: true
+      default: false
+    }
   }
 
   /// Whether this provider supports emotional expressions
   public var supportsExpressions: Bool {
-    self == .orpheus
+    switch self {
+      case .orpheus: true
+      default: false
+    }
   }
 
   /// Whether this provider supports quality level selection
   public var supportsQualityLevels: Bool {
-    self == .marvis
+    switch self {
+      case .marvis: true
+      default: false
+    }
   }
 
+  /// Whether this provider supports reference audio
   public var supportsReferenceAudio: Bool {
-    self == .outetts || self == .chatterbox
+    switch self {
+      case .outetts, .chatterbox: true
+      default: false
+    }
   }
 }
