@@ -40,6 +40,11 @@ final class EngineManager {
   /// Prepared reference audio for Chatterbox (enables fast speaker switching)
   var chatterboxReferenceAudio: ChatterboxReferenceAudio?
 
+  // MARK: - OuteTTS Speaker Profile
+
+  /// Speaker profile for OuteTTS (nil uses bundled default)
+  var outeTTSSpeaker: OuteTTSSpeakerProfile?
+
   // MARK: - Computed Properties
 
   var currentEngine: any TTSEngine {
@@ -135,7 +140,7 @@ final class EngineManager {
         case .marvis:
           return try await marvisEngine.generate(text, voice: marvisVoice)
         case .outetts:
-          return try await outeTTSEngine.generate(text)
+          return try await outeTTSEngine.generate(text, speaker: outeTTSSpeaker)
         case .chatterbox:
           return try await chatterboxEngine.generate(text, referenceAudio: chatterboxReferenceAudio)
       }
@@ -156,7 +161,7 @@ final class EngineManager {
       case .orpheus:
         orpheusEngine.generateStreaming(text, voice: orpheusVoice)
       case .outetts:
-        outeTTSEngine.generateStreaming(text)
+        outeTTSEngine.generateStreaming(text, speaker: outeTTSSpeaker)
       case .chatterbox:
         chatterboxEngine.generateStreaming(text, referenceAudio: chatterboxReferenceAudio)
     }
@@ -175,7 +180,7 @@ final class EngineManager {
         case .orpheus:
           return try await orpheusEngine.sayStreaming(text, voice: orpheusVoice)
         case .outetts:
-          return try await outeTTSEngine.sayStreaming(text)
+          return try await outeTTSEngine.sayStreaming(text, speaker: outeTTSSpeaker)
         case .chatterbox:
           return try await chatterboxEngine.sayStreaming(text, referenceAudio: chatterboxReferenceAudio)
       }

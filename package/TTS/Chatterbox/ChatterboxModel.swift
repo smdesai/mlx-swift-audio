@@ -429,7 +429,7 @@ class ChatterboxModel: Module {
     // Resample to 24kHz for S3Gen
     var refWav24k = wav
     if refSr != ChatterboxS3GenSr {
-      refWav24k = resampleAudio(wav, origSr: refSr, targetSr: ChatterboxS3GenSr)
+      refWav24k = AudioResampler.resample(wav, from: refSr, to: ChatterboxS3GenSr)
     }
     // Truncate to decoder conditioning length (10s)
     if refWav24k.shape[0] > Self.decCondLen {
@@ -437,12 +437,12 @@ class ChatterboxModel: Module {
     }
 
     // Resample 24kHz to 16kHz for S3Gen tokenization
-    let refWav16kFrom24k = resampleAudio(refWav24k, origSr: ChatterboxS3GenSr, targetSr: ChatterboxS3Sr)
+    let refWav16kFrom24k = AudioResampler.resample(refWav24k, from: ChatterboxS3GenSr, to: ChatterboxS3Sr)
 
     // Resample original to 16kHz for T3 encoder conditioning
     var refWav16kFull = wav
     if refSr != ChatterboxS3Sr {
-      refWav16kFull = resampleAudio(wav, origSr: refSr, targetSr: ChatterboxS3Sr)
+      refWav16kFull = AudioResampler.resample(wav, from: refSr, to: ChatterboxS3Sr)
     }
 
     // Truncate to encoder conditioning length (6s) for T3 tokens

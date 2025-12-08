@@ -370,9 +370,11 @@ actor MarvisTTS {
       }
       guard let refAudioURL else { throw MarvisTTSError.voiceNotFound }
 
-      let (loadedSampleRate, audio) = try loadAudioArray(from: refAudioURL)
-      guard abs(loadedSampleRate - 24000) < .leastNonzeroMagnitude else {
-        throw MarvisTTSError.invalidRefAudio("Reference audio must be single-channel (mono) 24kHz, in WAV format.")
+      let (loadedSampleRate, loadedAudio) = try loadAudioArray(from: refAudioURL)
+      let audio = if Int(loadedSampleRate) != 24000 {
+        AudioResampler.resample(loadedAudio, from: Int(loadedSampleRate), to: 24000)
+      } else {
+        loadedAudio
       }
       let refTextURL = refAudioURL.deletingPathExtension().appendingPathExtension("txt")
       let text = try String(data: Data(contentsOf: refTextURL), encoding: .utf8)

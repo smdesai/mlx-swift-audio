@@ -1,9 +1,32 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// View for selecting and managing reference audio for Chatterbox TTS
-struct ReferenceAudioView: View {
-  @Environment(AppState.self) private var appState
+/// Configuration for the reference audio picker
+struct ReferenceAudioPickerConfig {
+  /// Title displayed at the top
+  var title: String = "Reference Audio"
+
+  /// Description text shown at the bottom
+  var infoText: String
+
+  /// Loading state text
+  var loadingText: String = "Processing..."
+}
+
+/// Reusable reference audio picker component for TTS models
+struct ReferenceAudioPicker: View {
+  let config: ReferenceAudioPickerConfig
+
+  /// Current status description
+  let statusDescription: String
+
+  /// Whether audio is loaded
+  let isLoaded: Bool
+
+  /// Callbacks
+  let onLoadDefault: () async throws -> Void
+  let onLoadFromFile: (URL) async throws -> Void
+  let onLoadFromURL: (URL) async throws -> Void
 
   @State private var isShowingFilePicker = false
   @State private var isShowingURLInput = false
@@ -13,20 +36,20 @@ struct ReferenceAudioView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Reference Audio")
+      Text(config.title)
         .font(.headline)
 
       // Current selection display
       HStack {
-        Image(systemName: audioStatusIcon)
-          .foregroundStyle(audioStatusColor)
+        Image(systemName: statusIcon)
+          .foregroundStyle(statusColor)
 
         VStack(alignment: .leading, spacing: 2) {
-          Text(appState.chatterboxReferenceAudioDescription)
+          Text(statusDescription)
             .font(.subheadline)
 
           if isLoading {
-            Text("Preparing...")
+            Text(config.loadingText)
               .font(.caption)
               .foregroundStyle(.secondary)
           } else if let error = errorMessage {
@@ -43,16 +66,14 @@ struct ReferenceAudioView: View {
 
       // Action buttons
       HStack(spacing: 12) {
-        // Default button
         Button {
-          Task { await loadDefaultAudio() }
+          Task { await loadDefault() }
         } label: {
           Label("Default", systemImage: "waveform")
         }
         .buttonStyle(.bordered)
         .disabled(isLoading)
 
-        // File picker button
         Button {
           isShowingFilePicker = true
         } label: {
@@ -61,7 +82,6 @@ struct ReferenceAudioView: View {
         .buttonStyle(.bordered)
         .disabled(isLoading)
 
-        // URL input button
         Button {
           isShowingURLInput = true
         } label: {
@@ -72,14 +92,14 @@ struct ReferenceAudioView: View {
       }
 
       // Info text
-      Text("Chatterbox uses reference audio to match voice characteristics. For best results, use 10+ seconds of clear speech.")
+      Text(config.infoText)
         .font(.caption)
         .foregroundStyle(.secondary)
     }
     .fileImporter(
       isPresented: $isShowingFilePicker,
       allowedContentTypes: [.audio, .wav, .mp3, .aiff],
-      allowsMultipleSelection: false,
+      allowsMultipleSelection: false
     ) { result in
       handleFileSelection(result)
     }
@@ -105,20 +125,20 @@ struct ReferenceAudioView: View {
 
   // MARK: - Computed Properties
 
-  private var audioStatusIcon: String {
+  private var statusIcon: String {
     if isLoading {
       "arrow.triangle.2.circlepath"
-    } else if appState.isChatterboxReferenceAudioLoaded {
+    } else if isLoaded {
       "checkmark.circle.fill"
     } else {
       "circle"
     }
   }
 
-  private var audioStatusColor: Color {
+  private var statusColor: Color {
     if isLoading {
       .orange
-    } else if appState.isChatterboxReferenceAudioLoaded {
+    } else if isLoaded {
       .green
     } else {
       .secondary
@@ -127,12 +147,12 @@ struct ReferenceAudioView: View {
 
   // MARK: - Actions
 
-  private func loadDefaultAudio() async {
+  private func loadDefault() async {
     isLoading = true
     errorMessage = nil
 
     do {
-      try await appState.prepareDefaultChatterboxReferenceAudio()
+      try await onLoadDefault()
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -142,32 +162,31 @@ struct ReferenceAudioView: View {
 
   private func handleFileSelection(_ result: Result<[URL], Error>) {
     switch result {
-      case let .success(urls):
-        guard let url = urls.first else { return }
+    case let .success(urls):
+      guard let url = urls.first else { return }
 
-        // Start accessing the security-scoped resource
-        guard url.startAccessingSecurityScopedResource() else {
-          errorMessage = "Permission denied"
-          return
+      guard url.startAccessingSecurityScopedResource() else {
+        errorMessage = "Permission denied"
+        return
+      }
+
+      Task {
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+          try await onLoadFromFile(url)
+        } catch {
+          errorMessage = error.localizedDescription
         }
 
-        Task {
-          defer { url.stopAccessingSecurityScopedResource() }
+        isLoading = false
+      }
 
-          isLoading = true
-          errorMessage = nil
-
-          do {
-            try await appState.prepareChatterboxReferenceAudio(from: url)
-          } catch {
-            errorMessage = error.localizedDescription
-          }
-
-          isLoading = false
-        }
-
-      case let .failure(error):
-        errorMessage = error.localizedDescription
+    case let .failure(error):
+      errorMessage = error.localizedDescription
     }
   }
 
@@ -181,7 +200,7 @@ struct ReferenceAudioView: View {
     errorMessage = nil
 
     do {
-      try await appState.prepareChatterboxReferenceAudio(from: url)
+      try await onLoadFromURL(url)
     } catch {
       errorMessage = error.localizedDescription
     }

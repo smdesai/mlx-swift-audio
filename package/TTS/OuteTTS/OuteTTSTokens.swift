@@ -82,10 +82,10 @@ struct OuteTTSSpecialTokens {
 }
 
 /// Audio features for a word or segment
-struct OuteTTSAudioFeatures: Codable, Sendable {
-  var energy: Int
-  var spectralCentroid: Int
-  var pitch: Int
+public struct OuteTTSAudioFeatures: Codable, Sendable {
+  public var energy: Int
+  public var spectralCentroid: Int
+  public var pitch: Int
 
   enum CodingKeys: String, CodingKey {
     case energy
@@ -93,7 +93,7 @@ struct OuteTTSAudioFeatures: Codable, Sendable {
     case pitch
   }
 
-  init(energy: Int = 0, spectralCentroid: Int = 0, pitch: Int = 0) {
+  public init(energy: Int = 0, spectralCentroid: Int = 0, pitch: Int = 0) {
     self.energy = energy
     self.spectralCentroid = spectralCentroid
     self.pitch = pitch
@@ -101,14 +101,14 @@ struct OuteTTSAudioFeatures: Codable, Sendable {
 }
 
 /// Word data with audio codes and features
-struct OuteTTSWordData: Codable, Sendable {
-  var word: String
-  var duration: Double
-  var c1: [Int]
-  var c2: [Int]
-  var features: OuteTTSAudioFeatures
+public struct OuteTTSWordData: Codable, Sendable {
+  public var word: String
+  public var duration: Double
+  public var c1: [Int]
+  public var c2: [Int]
+  public var features: OuteTTSAudioFeatures
 
-  init(word: String, duration: Double, c1: [Int], c2: [Int], features: OuteTTSAudioFeatures) {
+  public init(word: String, duration: Double, c1: [Int], c2: [Int], features: OuteTTSAudioFeatures) {
     self.word = word
     self.duration = duration
     self.c1 = c1
@@ -119,9 +119,9 @@ struct OuteTTSWordData: Codable, Sendable {
 
 /// Speaker profile
 public struct OuteTTSSpeakerProfile: Codable, Sendable {
-  var text: String
-  var words: [OuteTTSWordData]
-  var globalFeatures: OuteTTSAudioFeatures
+  public var text: String
+  public var words: [OuteTTSWordData]
+  public var globalFeatures: OuteTTSAudioFeatures
 
   enum CodingKeys: String, CodingKey {
     case text
@@ -129,14 +129,14 @@ public struct OuteTTSSpeakerProfile: Codable, Sendable {
     case globalFeatures = "global_features"
   }
 
-  init(text: String, words: [OuteTTSWordData], globalFeatures: OuteTTSAudioFeatures) {
+  public init(text: String, words: [OuteTTSWordData], globalFeatures: OuteTTSAudioFeatures) {
     self.text = text
     self.words = words
     self.globalFeatures = globalFeatures
   }
 
   /// Load speaker profile from JSON file
-  static func load(from path: String) async throws -> OuteTTSSpeakerProfile {
+  public static func load(from path: String) async throws -> OuteTTSSpeakerProfile {
     let expandedPath = NSString(string: path).expandingTildeInPath
     let url = URL(fileURLWithPath: expandedPath)
     return try await Task.detached {

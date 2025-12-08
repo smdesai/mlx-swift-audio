@@ -110,7 +110,17 @@ func calculatePitch(
       // Check voicing threshold
       let autocorr0 = autocorr[0] + 1e-8
       if peakVal / autocorr0 > threshold, peakIdx > 0 {
-        let pitch = Float(sampleRate) / Float(peakIdx)
+        // Parabolic interpolation for sub-sample accuracy (matches Python)
+        var delta: Float = 0.0
+        if peakIdx > 0, peakIdx < frameLength - 1 {
+          let alpha = autocorr[peakIdx - 1]
+          let beta = autocorr[peakIdx]
+          let gamma = autocorr[peakIdx + 1]
+          delta = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma + 1e-8)
+        }
+
+        let bestPeriod = (Float(peakIdx) + delta) / Float(sampleRate)
+        let pitch = bestPeriod > 0 ? 1.0 / bestPeriod : 0.0
         pitches[i] = min(max(pitch, minFreq), maxFreq)
       }
     }
@@ -133,9 +143,12 @@ func extractSinglePitchValue(
     maxFreq: maxFreq,
   )
 
-  // Calculate average pitch
-  let nonZeroPitches = pitches.filter { $0 > 0 }
-  let averagePitch = nonZeroPitches.isEmpty ? 0 : nonZeroPitches.reduce(0, +) / Float(nonZeroPitches.count)
+  // Clip all values to [minFreq, maxFreq] range (matches Python behavior)
+  // This ensures unvoiced frames (0) become minFreq
+  let clippedPitches = pitches.map { max(min($0, maxFreq), minFreq) }
+
+  // Calculate average pitch (includes all frames, matching Python)
+  let averagePitch = clippedPitches.isEmpty ? 0 : clippedPitches.reduce(0, +) / Float(clippedPitches.count)
 
   // Normalize to 0-1 range
   let normalized = (averagePitch - minFreq) / (maxFreq - minFreq)
@@ -259,6 +272,64 @@ class OuteTTSFeatures {
   }
 }
 
+// MARK: - Audio Preprocessing
+
+/// Preprocess audio for speaker profile creation (matches Python's process_audio_array)
+/// - Parameters:
+///   - audio: Input audio array (1D)
+///   - sampleRate: Sample rate
+///   - targetLoudness: Target loudness in dB (default -18.0, similar to LUFS)
+///   - peakLimit: Peak limit in dB (default -1.0)
+/// - Returns: Preprocessed audio as MLXArray with shape [1, 1, samples]
+func preprocessAudioForSpeaker(
+  _ audio: MLXArray,
+  sampleRate: Int,
+  targetLoudness: Float = -18.0,
+  peakLimit: Float = -1.0,
+) -> MLXArray {
+  var audioData = audio.asArray(Float.self)
+
+  // Ensure minimum length (400ms block size for loudness measurement)
+  let minSamples = Int(0.4 * Float(sampleRate))
+  let originalLength = audioData.count
+
+  if originalLength < minSamples {
+    audioData.append(contentsOf: [Float](repeating: 0, count: minSamples - originalLength))
+  }
+
+  // Measure current RMS loudness (approximation of integrated loudness)
+  var squaredSum: Float = 0
+  vDSP_svesq(audioData, 1, &squaredSum, vDSP_Length(audioData.count))
+  let rmsDb = 20 * log10(sqrt(squaredSum / Float(audioData.count)) + 1e-10)
+
+  // Calculate gain needed to reach target loudness
+  let gainDb = targetLoudness - rmsDb
+  let gain = pow(10.0, gainDb / 20.0)
+
+  // Apply gain
+  var gainedAudio = [Float](repeating: 0, count: audioData.count)
+  var gainValue = gain
+  vDSP_vsmul(audioData, 1, &gainValue, &gainedAudio, 1, vDSP_Length(audioData.count))
+
+  // Apply peak limiting if necessary
+  var maxVal: Float = 0
+  vDSP_maxmgv(gainedAudio, 1, &maxVal, vDSP_Length(gainedAudio.count))
+  let peakThreshold = pow(10.0, peakLimit / 20.0)
+
+  if maxVal > peakThreshold {
+    let peakGain = peakThreshold / maxVal
+    var peakGainValue = peakGain
+    vDSP_vsmul(gainedAudio, 1, &peakGainValue, &gainedAudio, 1, vDSP_Length(gainedAudio.count))
+  }
+
+  // Trim back to original length if we padded
+  if originalLength < minSamples {
+    gainedAudio = Array(gainedAudio.prefix(originalLength))
+  }
+
+  return MLXArray(gainedAudio)
+}
+
 // MARK: - Audio Processor
 
 /// Audio processor for OuteTTS. Immutable after creation via `create()` factory method.
@@ -289,8 +360,11 @@ final class OuteTTSAudioProcessor {
     text: String,
     words: [(word: String, start: Double, end: Double)],
   ) async throws -> OuteTTSSpeakerProfile {
-    // Encode audio to get codes
-    let (_, codes) = audioCodec.encode(audio.reshaped([1, 1, -1]))
+    // Preprocess audio (loudness normalization + peak limiting, matches Python)
+    let processedAudio = preprocessAudioForSpeaker(audio, sampleRate: sampleRate)
+
+    // Encode preprocessed audio to get codes
+    let (_, codes) = audioCodec.encode(processedAudio.reshaped([1, 1, -1]))
     let codesArray = codes.asArray(Int32.self)
 
     // Parse codes into c1 and c2
@@ -309,8 +383,8 @@ final class OuteTTSAudioProcessor {
       }
     }
 
-    // Extract global features
-    let globalFeatures = features.extractAudioFeatures(audio: audio, sampleRate: sampleRate)
+    // Extract global features from preprocessed audio
+    let globalFeatures = features.extractAudioFeatures(audio: processedAudio, sampleRate: sampleRate)
 
     // Tokens per second (approximately 75 for DAC at 24kHz)
     let tps = 75.0
@@ -319,7 +393,7 @@ final class OuteTTSAudioProcessor {
     var wordCodes: [OuteTTSWordData] = []
     var start: Int? = nil
 
-    let audioData = audio.asArray(Float.self)
+    let audioData = processedAudio.asArray(Float.self)
 
     for (idx, wordInfo) in words.enumerated() {
       if start == nil {

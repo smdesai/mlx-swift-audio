@@ -245,3 +245,57 @@ extension AppState {
     set { engineManager.chatterboxEngine.cfgWeight = newValue }
   }
 }
+
+// MARK: - OuteTTS Speaker Profile
+
+extension AppState {
+  /// Current speaker profile for OuteTTS
+  var outeTTSSpeaker: OuteTTSSpeakerProfile? {
+    get { engineManager.outeTTSSpeaker }
+    set { engineManager.outeTTSSpeaker = newValue }
+  }
+
+  /// Whether a speaker profile is loaded for OuteTTS
+  var isOuteTTSSpeakerLoaded: Bool {
+    engineManager.outeTTSSpeaker != nil
+  }
+
+  /// Description of current speaker profile
+  var outeTTSSpeakerDescription: String {
+    if let speaker = engineManager.outeTTSSpeaker {
+      let wordCount = speaker.words.count
+      return "Custom speaker (\(wordCount) words)"
+    }
+    return "Default speaker"
+  }
+
+  /// Load speaker profile from a URL (local file)
+  func loadOuteTTSSpeaker(from url: URL) async throws {
+    let speaker = try await OuteTTSSpeakerProfile.load(from: url.path)
+    engineManager.outeTTSSpeaker = speaker
+  }
+
+  /// Load the default speaker profile
+  func loadDefaultOuteTTSSpeaker() async throws {
+    // Setting to nil means the engine will use the bundled default
+    engineManager.outeTTSSpeaker = nil
+  }
+
+  /// Create and load speaker profile from an audio file
+  func createOuteTTSSpeaker(from url: URL) async throws {
+    let speaker = try await engineManager.outeTTSEngine.createSpeakerProfile(from: url)
+    engineManager.outeTTSSpeaker = speaker
+  }
+
+  /// Temperature for OuteTTS
+  var outeTTSTemperature: Float {
+    get { engineManager.outeTTSEngine.temperature }
+    set { engineManager.outeTTSEngine.temperature = newValue }
+  }
+
+  /// Top-P for OuteTTS
+  var outeTTSTopP: Float {
+    get { engineManager.outeTTSEngine.topP }
+    set { engineManager.outeTTSEngine.topP = newValue }
+  }
+}

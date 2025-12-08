@@ -53,81 +53,6 @@ struct S3GenRefDict: @unchecked Sendable {
   }
 }
 
-// MARK: - Audio Resampling
-
-/// Resample audio using AVAudioConverter for high-quality resampling with anti-aliasing.
-func resampleAudio(_ audio: MLXArray, origSr: Int, targetSr: Int) -> MLXArray {
-  if origSr == targetSr {
-    return audio
-  }
-
-  let inputSamples = audio.asArray(Float.self)
-
-  guard let inputFormat = AVAudioFormat(
-    commonFormat: .pcmFormatFloat32,
-    sampleRate: Double(origSr),
-    channels: 1,
-    interleaved: false,
-  ),
-    let outputFormat = AVAudioFormat(
-      commonFormat: .pcmFormatFloat32,
-      sampleRate: Double(targetSr),
-      channels: 1,
-      interleaved: false,
-    )
-  else {
-    fatalError("Failed to create audio format for resampling \(origSr) -> \(targetSr)")
-  }
-
-  guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-    fatalError("Failed to create AVAudioConverter for resampling \(origSr) -> \(targetSr)")
-  }
-
-  let frameCount = AVAudioFrameCount(inputSamples.count)
-  guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount) else {
-    fatalError("Failed to create input buffer for resampling")
-  }
-  inputBuffer.frameLength = frameCount
-
-  if let channelData = inputBuffer.floatChannelData {
-    inputSamples.withUnsafeBufferPointer { ptr in
-      channelData[0].initialize(from: ptr.baseAddress!, count: inputSamples.count)
-    }
-  }
-
-  let outputFrameCount = AVAudioFrameCount(
-    Double(inputSamples.count) * Double(targetSr) / Double(origSr) + 1)
-  guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputFrameCount)
-  else {
-    fatalError("Failed to create output buffer for resampling")
-  }
-
-  var error: NSError?
-  var inputConsumed = false
-
-  let status = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
-    if inputConsumed {
-      outStatus.pointee = .noDataNow
-      return nil
-    }
-    inputConsumed = true
-    outStatus.pointee = .haveData
-    return inputBuffer
-  }
-
-  if status == .error || error != nil {
-    fatalError("Audio resampling failed: \(error?.localizedDescription ?? "unknown error")")
-  }
-
-  guard let outputChannelData = outputBuffer.floatChannelData else {
-    fatalError("Failed to get output channel data after resampling")
-  }
-
-  let outputLength = Int(outputBuffer.frameLength)
-  let resampled = Array(UnsafeBufferPointer(start: outputChannelData[0], count: outputLength))
-  return MLXArray(resampled)
-}
-
 // MARK: - S3Token2Mel
 
 /// S3Gen CFM decoder: maps S3 speech tokens to mel-spectrograms
@@ -217,7 +142,7 @@ class S3Token2Mel: Module {
     if refSr == S3GenSr {
       refWav24 = wavArray
     } else {
-      refWav24 = resampleAudio(wavArray.squeezed(), origSr: refSr, targetSr: S3GenSr)
+      refWav24 = AudioResampler.resample(wavArray.squeezed(), from: refSr, to: S3GenSr)
       refWav24 = refWav24.expandedDimensions(axis: 0)
     }
 
@@ -240,7 +165,7 @@ class S3Token2Mel: Module {
     if refSr == S3Sr {
       refWav16 = wavArray
     } else {
-      refWav16 = resampleAudio(wavArray.squeezed(), origSr: refSr, targetSr: S3Sr)
+      refWav16 = AudioResampler.resample(wavArray.squeezed(), from: refSr, to: S3Sr)
       refWav16 = refWav16.expandedDimensions(axis: 0)
     }
 

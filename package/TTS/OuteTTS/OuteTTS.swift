@@ -288,7 +288,7 @@ actor OuteTTS {
   /// Get speaker profile (from file, reference audio, or default)
   func getSpeaker(
     voicePath: String? = nil,
-    referenceAudio: MLXArray? = nil,
+    referenceAudio: sending MLXArray? = nil,
     referenceText: String? = nil,
     referenceWords: [(word: String, start: Double, end: Double)]? = nil,
   ) async throws -> OuteTTSSpeakerProfile? {

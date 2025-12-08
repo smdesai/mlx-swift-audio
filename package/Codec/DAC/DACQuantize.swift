@@ -47,10 +47,11 @@ class DACVectorQuantize: Module {
   }
 
   /// Forward pass: quantize latent representation
+  /// Input z: [batch, latent_dim, time] (channels-first from encoder)
   func callAsFunction(_ z: MLXArray) -> (zQ: MLXArray, commitmentLoss: MLXArray, codebookLoss: MLXArray, indices: MLXArray, zE: MLXArray) {
-    // z: [batch, time, dim]
-    // Project to codebook dimension
-    let zE = inProj(z.transposed(axes: [0, 2, 1])).transposed(axes: [0, 2, 1]) // [batch, time, codebook_dim]
+    // z: [batch, latent_dim, time] (channels-first)
+    // Project to codebook dimension via conv (needs channels-last)
+    let zE = inProj(z.transposed(axes: [0, 2, 1])).transposed(axes: [0, 2, 1]) // [batch, codebook_dim, time]
 
     // Find nearest codebook entries
     let (zQRaw, indices) = decodeLatents(zE)
@@ -79,12 +80,15 @@ class DACVectorQuantize: Module {
   }
 
   /// Find nearest codebook entries for latent vectors
+  /// Input latents: [batch, codebook_dim, time] (matches Python format)
   func decodeLatents(_ latents: MLXArray) -> (zQ: MLXArray, indices: MLXArray) {
     let batch = latents.shape[0]
-    let time = latents.shape[1]
+    let dim = latents.shape[1] // codebook_dim
+    let time = latents.shape[2]
 
-    // Reshape: [batch, time, dim] -> [batch*time, dim]
-    let encodings = latents.reshaped([batch * time, -1])
+    // Reshape: [batch, dim, time] -> [batch*time, dim]
+    // Python: rearrange(latents, "b d t -> (b t) d")
+    let encodings = latents.transposed(axes: [0, 2, 1]).reshaped([batch * time, dim])
     let codebookWeight = codebook.weight // [codebook_size, codebook_dim]
 
     // L2 normalize
@@ -100,10 +104,12 @@ class DACVectorQuantize: Module {
     let minDist = MLX.argMax(MLX.negative(dist), axis: 1)
 
     // Reshape indices back: [batch*time] -> [batch, time]
+    // Python: rearrange((-dist).argmax(1), "(b t) -> b t", b=latents.shape[0])
     let indices = minDist.reshaped([batch, time])
 
-    // Get quantized vectors
-    let zQ = decodeCode(indices)
+    // Get quantized vectors and transpose to [batch, dim, time]
+    // Python: rearrange(self.codebook(indices), "b t d -> b d t")
+    let zQ = decodeCode(indices) // Already returns [batch, dim, time] from decodeCode
 
     return (zQ, indices)
   }

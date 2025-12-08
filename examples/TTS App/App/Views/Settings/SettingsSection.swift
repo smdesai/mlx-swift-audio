@@ -22,12 +22,45 @@ struct SettingsSection: View {
 
       // Reference Audio (OuteTTS)
       if appState.selectedProvider == .outetts {
-        OuteTTSReferenceAudioView()
+        ReferenceAudioPicker(
+          config: ReferenceAudioPickerConfig(
+            title: "Speaker Profile",
+            infoText: "Create a speaker profile from reference audio with automatic transcription. Use 5-15 seconds of clear speech.",
+            loadingText: "Processing audio...",
+          ),
+          statusDescription: appState.outeTTSSpeakerDescription,
+          isLoaded: appState.isOuteTTSSpeakerLoaded,
+          onLoadDefault: {
+            try await appState.loadDefaultOuteTTSSpeaker()
+          },
+          onLoadFromFile: { url in
+            try await appState.createOuteTTSSpeaker(from: url)
+          },
+          onLoadFromURL: { url in
+            try await appState.createOuteTTSSpeaker(from: url)
+          },
+        )
       }
 
       // Reference Audio (Chatterbox)
       if appState.selectedProvider == .chatterbox {
-        ReferenceAudioView()
+        ReferenceAudioPicker(
+          config: ReferenceAudioPickerConfig(
+            title: "Reference Audio",
+            infoText: "Chatterbox uses reference audio to match voice characteristics. For best results, use 10+ seconds of clear speech.",
+          ),
+          statusDescription: appState.chatterboxReferenceAudioDescription,
+          isLoaded: appState.isChatterboxReferenceAudioLoaded,
+          onLoadDefault: {
+            try await appState.prepareDefaultChatterboxReferenceAudio()
+          },
+          onLoadFromFile: { url in
+            try await appState.prepareChatterboxReferenceAudio(from: url)
+          },
+          onLoadFromURL: { url in
+            try await appState.prepareChatterboxReferenceAudio(from: url)
+          },
+        )
 
         // Emotion exaggeration slider
         VStack(alignment: .leading, spacing: 4) {
@@ -65,23 +98,6 @@ private struct QualityLevelSection: View {
         }
       }
       .pickerStyle(.menu)
-    }
-  }
-}
-
-/// Reference audio placeholder for OuteTTS
-private struct OuteTTSReferenceAudioView: View {
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Reference Audio (not yet implemented)")
-        .font(.headline)
-
-      Button {
-        // TODO: Implement reference audio selection
-      } label: {
-        Label("Select Audio File", systemImage: "waveform")
-      }
-      .buttonStyle(.bordered)
     }
   }
 }

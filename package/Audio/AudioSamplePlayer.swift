@@ -33,10 +33,6 @@ public final class AudioSamplePlayer {
     setup()
   }
 
-  deinit {
-    NotificationCenter.default.removeObserver(self)
-  }
-
   // MARK: - Setup
 
   private func setup() {
