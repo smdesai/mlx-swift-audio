@@ -14,7 +14,7 @@ import MLXNN
 // MARK: - Marvis-specific Llama3 Scaled RoPE
 
 /// Llama3-style RoPE with manual cos/sin cache, specifically tuned for Marvis.
-/// This implementation uses a different frequency convention than the standard MLXFast.RoPE.
+/// This implementation uses a different frequency convention than the standard RoPE.
 private class Llama3ScaledRoPE {
   let dims: Int
   var maxSeqLen: Int

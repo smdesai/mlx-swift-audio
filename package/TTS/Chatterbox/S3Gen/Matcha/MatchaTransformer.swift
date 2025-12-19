@@ -7,7 +7,6 @@
 
 import Foundation
 import MLX
-import MLXFast
 import MLXNN
 
 // MARK: - DiffusersAttention
@@ -64,7 +63,7 @@ class DiffusersAttention: Module {
     }
 
     // Use MLX fast attention
-    let out = MLXFast.scaledDotProductAttention(
+    let out = scaledDotProductAttention(
       queries: qReshaped,
       keys: kReshaped,
       values: vReshaped,

@@ -5,7 +5,6 @@
 
 import Foundation
 import MLX
-import MLXFast
 import MLXNN
 
 /// Self-Attention with Memory (SANM)
@@ -154,7 +153,7 @@ class MultiHeadAttentionSANM: Module {
     }
 
     // Use fast scaled dot-product attention
-    var context = MLXFast.scaledDotProductAttention(
+    var context = scaledDotProductAttention(
       queries: qH,
       keys: kH,
       values: vH,
@@ -243,7 +242,7 @@ class FunASRMultiHeadAttention: Module {
     }
 
     // Use fast scaled dot-product attention
-    var context = MLXFast.scaledDotProductAttention(
+    var context = scaledDotProductAttention(
       queries: qH,
       keys: kH,
       values: vH,

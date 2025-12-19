@@ -169,6 +169,9 @@ final class Attention: Module {
       v = split(v, indices: [start], axis: 2)[1]
     }
 
+    // Using MLXFast.scaledDotProductAttention directly (instead of attentionWithCacheUpdate) because
+    // we need to apply context window limiting between cache update and attention computation.
+    // Note: This means QuantizedKVCache won't work correctly with this attention implementation.
     let maskMode: MLXFast.ScaledDotProductAttentionMaskMode = if let mask { .array(mask) } else { .none }
     var out = MLXFast.scaledDotProductAttention(queries: q, keys: k, values: v, scale: scale, mask: maskMode)
     out = swappedAxes(out, 1, 2).reshaped([b, t, hd])

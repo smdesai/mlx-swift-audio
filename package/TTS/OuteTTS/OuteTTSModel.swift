@@ -120,7 +120,7 @@ private class OuteTTSAttention: Module {
     if let rope {
       rope(x, offset: offset)
     } else {
-      MLXFast.RoPE(
+      RoPE(
         x,
         dimensions: ropeDims,
         traditional: standardRopeTraditional,

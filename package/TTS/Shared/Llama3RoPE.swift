@@ -2,13 +2,12 @@
 
 import Foundation
 import MLX
-import MLXFast
 import MLXLMCommon
 
 /// Llama3-style RoPE with frequency scaling for extended context.
 ///
 /// This implementation pre-computes scaled frequencies and uses the optimized
-/// MLXFast.RoPE kernel for the actual rotation computation.
+/// the RoPE kernel for the actual rotation computation.
 ///
 /// The Llama3 scaling applies smooth interpolation between frequency bands:
 /// - High frequency band (short wavelengths): kept unchanged
@@ -101,9 +100,9 @@ final class Llama3RoPE {
     )
   }
 
-  /// Apply RoPE using the optimized MLXFast kernel
+  /// Apply RoPE using the optimized kernel
   func callAsFunction(_ x: MLXArray, offset: Int = 0) -> MLXArray {
-    MLXFast.RoPE(
+    RoPE(
       x,
       dimensions: dims,
       traditional: traditional,

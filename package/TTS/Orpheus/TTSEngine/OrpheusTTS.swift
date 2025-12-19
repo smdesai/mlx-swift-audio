@@ -6,7 +6,6 @@
 
 import Foundation
 @preconcurrency import MLX
-@preconcurrency import MLXFast
 @preconcurrency import MLXLMCommon
 @preconcurrency import MLXNN
 import MLXRandom

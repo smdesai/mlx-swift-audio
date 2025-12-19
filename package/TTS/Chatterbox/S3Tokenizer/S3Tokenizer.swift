@@ -5,7 +5,6 @@
 
 import Foundation
 import MLX
-import MLXFast
 import MLXNN
 
 // MARK: - Rotary Position Embeddings
@@ -114,7 +113,7 @@ class MultiHeadAttention: Module {
     let kReshaped = k.reshaped([B, T, nHead, -1]).transposed(0, 2, 1, 3) * scale
     let vReshaped = v.reshaped([B, T, nHead, -1]).transposed(0, 2, 1, 3)
 
-    let output = MLXFast.scaledDotProductAttention(
+    let output = scaledDotProductAttention(
       queries: qReshaped,
       keys: kReshaped,
       values: vReshaped,
@@ -284,7 +283,7 @@ class FSMNMultiHeadAttention: Module {
     let kTransposed = kReshaped.transposed(0, 2, 1, 3) * scale
     let vTransposed = vReshaped.transposed(0, 2, 1, 3)
 
-    let output = MLXFast.scaledDotProductAttention(
+    let output = scaledDotProductAttention(
       queries: qTransposed,
       keys: kTransposed,
       values: vTransposed,

@@ -5,7 +5,6 @@
 
 import Foundation
 import MLX
-import MLXFast
 import MLXNN
 import MLXRandom
 
@@ -45,7 +44,7 @@ class AttentionQKV: Module {
     let vSplit = splitHeads(v)
 
     // Use MLX fast attention (fused kernel)
-    let out = MLXFast.scaledDotProductAttention(
+    let out = scaledDotProductAttention(
       queries: qSplit,
       keys: kSplit,
       values: vSplit,

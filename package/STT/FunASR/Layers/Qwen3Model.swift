@@ -5,7 +5,6 @@
 
 import Foundation
 import MLX
-import MLXFast
 import MLXNN
 
 // MARK: - Qwen3 Attention
@@ -104,7 +103,7 @@ class Qwen3Attention: Module {
     let newCache = (keys, values)
 
     // Scaled dot-product attention
-    let output = MLXFast.scaledDotProductAttention(
+    let output = scaledDotProductAttention(
       queries: queries,
       keys: keys,
       values: values,

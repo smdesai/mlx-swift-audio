@@ -6,7 +6,6 @@
 
 import Foundation
 import MLX
-import MLXFast
 import MLXNN
 
 class LayerNormInference: Module {
@@ -21,6 +20,6 @@ class LayerNormInference: Module {
   }
 
   open func callAsFunction(_ x: MLXArray) -> MLXArray {
-    MLXFast.layerNorm(x, weight: weight, bias: bias, eps: eps)
+    layerNorm(x, weight: weight, bias: bias, eps: eps)
   }
 }
