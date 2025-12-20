@@ -1,7 +1,7 @@
-// Copyright © 2025 Resemble AI (original model implementation)
+// Copyright © Xingchen Song (original model implementation)
 // Copyright © Anthony DePasquale (MLX port)
-// Ported to MLX from https://github.com/resemble-ai/chatterbox
-// License: licenses/chatterbox.txt
+// Ported to MLX from https://github.com/xingchensong/S3Tokenizer
+// License: licenses/s3tokenizer.txt
 
 import Foundation
 import MLX
@@ -234,10 +234,11 @@ class FSMNMultiHeadAttention: Module {
       inputsReshaped = inputsReshaped * mask
     }
 
-    // Pad left and right
-    let padLeft = MLXArray.zeros([b, leftPadding, inputsReshaped.shape[2]], dtype: inputsReshaped.dtype)
-    let padRight = MLXArray.zeros([b, rightPadding, inputsReshaped.shape[2]], dtype: inputsReshaped.dtype)
-    let xPadded = MLX.concatenated([padLeft, inputsReshaped, padRight], axis: 1)
+    // Pad left and right using MLX.padded
+    let xPadded = MLX.padded(
+      inputsReshaped,
+      widths: [IntOrPair(0), IntOrPair((leftPadding, rightPadding)), IntOrPair(0)]
+    )
 
     var x = fsmnBlock(xPadded)
     x = x + inputsReshaped
@@ -329,7 +330,7 @@ class S3ResidualAttentionBlock: Module {
       nHead: nHead,
       kernelSize: kernelSize,
     )
-    _attnLn.wrappedValue = LayerNorm(dimensions: nState, eps: 1e-6)
+    _attnLn.wrappedValue = LayerNorm(dimensions: nState, eps: 1e-5)
 
     let nMlp = nState * 4
     _mlp.wrappedValue = Sequential {
@@ -337,7 +338,7 @@ class S3ResidualAttentionBlock: Module {
       GELU()
       Linear(nMlp, nState)
     }
-    _mlpLn.wrappedValue = LayerNorm(dimensions: nState)
+    _mlpLn.wrappedValue = LayerNorm(dimensions: nState, eps: 1e-5)
   }
 
   func callAsFunction(
@@ -396,7 +397,12 @@ class AudioEncoderV2: Module {
     // x: (batch_size, n_mels, T)
     // xLen: (batch_size,)
 
-    var mask = makeNonPadMask(lengths: xLen)
+    // Track both per-sample lengths (xLen) and tensor sequence length (xSlen)
+    // This is important for proper mask generation with batched variable-length sequences
+    let T = x.shape[2]
+    var xSlen = T
+
+    var mask = makeNonPadMask(lengths: xLen, maxLen: xSlen)
     mask = mask.expandedDimensions(axis: 1) // (B, 1, T)
 
     var xTransposed = x.transposed(0, 2, 1) // (B, T, n_mels)
@@ -405,8 +411,9 @@ class AudioEncoderV2: Module {
     xTransposed = conv1(xTransposed * maskTransposed)
     xTransposed = gelu(xTransposed)
     var xLenUpdated = (xLen + 2 - 1 * (3 - 1) - 1) / stride + 1
+    xSlen = (xSlen + 2 - 1 * (3 - 1) - 1) / stride + 1
 
-    mask = makeNonPadMask(lengths: xLenUpdated)
+    mask = makeNonPadMask(lengths: xLenUpdated, maxLen: xSlen)
     maskTransposed = mask.expandedDimensions(axis: -1) // (B, T, 1)
 
     xTransposed = conv2(xTransposed * maskTransposed)
@@ -414,8 +421,9 @@ class AudioEncoderV2: Module {
     // Break up complex expression for compiler
     let kernelTerm = 1 * (3 - 1)
     xLenUpdated = (xLenUpdated + 2 - kernelTerm - 1) / 2 + 1
+    xSlen = (xSlen + 2 - kernelTerm - 1) / 2 + 1
 
-    mask = makeNonPadMask(lengths: xLenUpdated)
+    mask = makeNonPadMask(lengths: xLenUpdated, maxLen: xSlen)
     let maskPad = mask.expandedDimensions(axis: -1) // (B, T, 1)
     var maskBias = maskToBias(mask, dtype: xTransposed.dtype)
     maskBias = maskBias.expandedDimensions(axis: 1) // (B, 1, T)

@@ -1,7 +1,7 @@
-// Copyright © 2025 Resemble AI (original model implementation)
+// Copyright © Xingchen Song (original model implementation)
 // Copyright © Anthony DePasquale (MLX port)
-// Ported to MLX from https://github.com/resemble-ai/chatterbox
-// License: licenses/chatterbox.txt
+// Ported to MLX from https://github.com/xingchensong/S3Tokenizer
+// License: licenses/s3tokenizer.txt
 
 import Foundation
 
