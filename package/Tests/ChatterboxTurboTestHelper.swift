@@ -1,0 +1,59 @@
+// Copyright © Anthony DePasquale
+
+import Foundation
+import MLX
+
+@testable import MLXAudio
+
+// MARK: - Shared Test Resources
+
+/// Global shared model for all ChatterboxTurbo tests.
+///
+/// **IMPORTANT: Must Use xcodebuild (NOT swift test)**
+///
+/// Tests that use MLX/Metal must be run with `xcodebuild`, not `swift test`.
+/// Using `swift test` will fail with "Failed to load the default metallib" error.
+///
+/// **IMPORTANT: Memory Management**
+///
+/// The ChatterboxTurbo model requires ~2GB of GPU memory. When running tests:
+///
+/// 1. **Run only ONE test suite at a time** to avoid loading multiple model instances
+/// 2. Use `xcodebuild test -only-testing:` to run specific tests
+/// 3. If memory usage exceeds ~3GB, something is loading multiple models
+///
+/// Example commands:
+/// ```bash
+/// # Run only ChatterboxTurboTests
+/// xcodebuild test -scheme mlx-audio-Package -destination 'platform=macOS' \
+///   -only-testing:mlx-audioPackageTests/ChatterboxTurboTests
+/// ```
+///
+/// **Do NOT run all tests at once** as this will load multiple models and exhaust memory.
+@MainActor
+enum ChatterboxTurboTestHelper {
+  /// Shared model instance - loaded once and reused across ALL test suites
+  private static var _sharedModel: ChatterboxTurboModel?
+
+  /// Get or load the shared model (loads only once)
+  ///
+  /// Note: Do NOT mix this with ChatterboxTurboTTS in the same test run,
+  /// as ChatterboxTurboTTS loads its own copy of the model internally.
+  static func getOrLoadModel() async throws -> ChatterboxTurboModel {
+    if let model = _sharedModel {
+      return model
+    }
+    print("[ChatterboxTurboTestHelper] Loading shared model (first time)...")
+    let model = try await ChatterboxTurboModel.load()
+    eval(model)
+    _sharedModel = model
+    print("[ChatterboxTurboTestHelper] Shared model loaded and cached")
+    return model
+  }
+
+  /// Clear cached resources (call after tests if needed)
+  static func clearCache() {
+    _sharedModel = nil
+    print("[ChatterboxTurboTestHelper] Cache cleared")
+  }
+}

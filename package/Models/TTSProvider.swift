@@ -41,6 +41,7 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
   case cosyVoice2
   case cosyVoice3
   case chatterbox
+  case chatterboxTurbo
   case outetts
   case kokoro
   case orpheus
@@ -53,6 +54,7 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
     switch self {
       case .outetts: "OuteTTS"
       case .chatterbox: "Chatterbox"
+      case .chatterboxTurbo: "Chatterbox Turbo"
       case .cosyVoice2: "CosyVoice 2"
       case .cosyVoice3: "CosyVoice 3"
       default: rawValue.capitalized
@@ -97,7 +99,7 @@ public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
   /// Whether this provider supports reference audio
   public var supportsReferenceAudio: Bool {
     switch self {
-      case .outetts, .chatterbox, .cosyVoice2, .cosyVoice3: true
+      case .outetts, .chatterbox, .chatterboxTurbo, .cosyVoice2, .cosyVoice3: true
       default: false
     }
   }

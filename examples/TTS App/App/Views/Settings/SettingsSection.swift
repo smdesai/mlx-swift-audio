@@ -82,6 +82,27 @@ struct SettingsSection: View {
         }
       }
 
+      // Reference Audio (Chatterbox Turbo)
+      if appState.selectedProvider == .chatterboxTurbo {
+        ReferenceAudioPicker(
+          config: ReferenceAudioPickerConfig(
+            title: "Reference Audio",
+            infoText: "Chatterbox Turbo uses reference audio to match voice characteristics. For best results, use 10+ seconds of clear speech."
+          ),
+          statusDescription: appState.chatterboxTurboReferenceAudioDescription,
+          isLoaded: appState.isChatterboxTurboReferenceAudioLoaded,
+          onLoadDefault: {
+            try await appState.prepareDefaultChatterboxTurboReferenceAudio()
+          },
+          onLoadFromFile: { url in
+            try await appState.prepareChatterboxTurboReferenceAudio(from: url)
+          },
+          onLoadFromURL: { url in
+            try await appState.prepareChatterboxTurboReferenceAudio(from: url)
+          }
+        )
+      }
+
       // Speaker (CosyVoice2)
       if appState.selectedProvider == .cosyVoice2 {
         ReferenceAudioPicker(

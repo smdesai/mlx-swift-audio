@@ -155,6 +155,7 @@ class ConditionalDecoder: Module {
 
   @ModuleInfo(key: "time_embeddings") var timeEmbeddings: SinusoidalPosEmb
   @ModuleInfo(key: "time_mlp") var timeMlp: TimestepEmbedding
+  @ModuleInfo(key: "time_embed_mixer") var timeEmbedMixer: Linear?
   @ModuleInfo(key: "down_blocks") var downBlocks: [DownBlock]
   @ModuleInfo(key: "mid_blocks") var midBlocks: [MidBlock]
   @ModuleInfo(key: "up_blocks") var upBlocks: [UpBlock]
@@ -173,7 +174,8 @@ class ConditionalDecoder: Module {
     numHeads: Int = 8,
     actFn: String = "gelu",
     staticChunkSize: Int = 50,
-    numDecodingLeftChunks: Int = 2
+    numDecodingLeftChunks: Int = 2,
+    meanflow: Bool = false
   ) {
     self.inChannels = inChannels
     self.outChannels = outChannels
@@ -185,6 +187,11 @@ class ConditionalDecoder: Module {
     _timeEmbeddings.wrappedValue = SinusoidalPosEmb(dim: inChannels)
     let timeEmbedDim = channels[0] * 4
     _timeMlp.wrappedValue = TimestepEmbedding(inChannels: inChannels, timeEmbedDim: timeEmbedDim, actFn: "silu")
+
+    // Meanflow time mixing (for Chatterbox Turbo)
+    if meanflow {
+      _timeEmbedMixer.wrappedValue = Linear(timeEmbedDim * 2, timeEmbedDim, bias: false)
+    }
 
     // Down blocks
     var downBlocksArray: [DownBlock] = []
@@ -281,7 +288,8 @@ class ConditionalDecoder: Module {
     t: MLXArray,
     spks: MLXArray? = nil,
     cond: MLXArray? = nil,
-    streaming: Bool = false
+    streaming: Bool = false,
+    r: MLXArray? = nil // Next timestep for meanflow mode (not used directly, for API consistency)
   ) -> MLXArray {
     // Time embedding
     var tEmb = timeEmbeddings(t)

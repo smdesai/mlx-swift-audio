@@ -16,6 +16,7 @@ final class EngineManager {
   private(set) var marvisEngine = MarvisEngine()
   private(set) var outeTTSEngine = OuteTTSEngine()
   private(set) var chatterboxEngine = ChatterboxEngine()
+  private(set) var chatterboxTurboEngine = ChatterboxTurboEngine()
   private(set) var cosyVoice2Engine = CosyVoice2Engine()
   private(set) var cosyVoice3Engine = CosyVoice3Engine()
 
@@ -44,6 +45,9 @@ final class EngineManager {
   /// Prepared reference audio for Chatterbox (enables fast speaker switching)
   var chatterboxReferenceAudio: ChatterboxReferenceAudio?
 
+  /// Prepared reference audio for Chatterbox Turbo (enables fast speaker switching)
+  var chatterboxTurboReferenceAudio: ChatterboxTurboReferenceAudio?
+
   // MARK: - OuteTTS Speaker Profile
 
   /// Speaker profile for OuteTTS (nil uses bundled default)
@@ -68,6 +72,7 @@ final class EngineManager {
       case .marvis: marvisEngine
       case .outetts: outeTTSEngine
       case .chatterbox: chatterboxEngine
+      case .chatterboxTurbo: chatterboxTurboEngine
       case .cosyVoice2: cosyVoice2Engine
       case .cosyVoice3: cosyVoice3Engine
     }
@@ -128,6 +133,11 @@ final class EngineManager {
         chatterboxReferenceAudio = try await chatterboxEngine.prepareDefaultReferenceAudio()
       }
 
+      // Chatterbox Turbo-specific: load default reference audio if needed
+      if selectedProvider == .chatterboxTurbo, chatterboxTurboReferenceAudio == nil {
+        chatterboxTurboReferenceAudio = try await chatterboxTurboEngine.prepareDefaultReferenceAudio()
+      }
+
       // CosyVoice2-specific: load default speaker if needed
       if selectedProvider == .cosyVoice2, cosyVoice2Speaker == nil {
         cosyVoice2Speaker = try await cosyVoice2Engine.prepareDefaultSpeaker()
@@ -169,6 +179,8 @@ final class EngineManager {
           return try await outeTTSEngine.generate(text, speaker: outeTTSSpeaker)
         case .chatterbox:
           return try await chatterboxEngine.generate(text, referenceAudio: chatterboxReferenceAudio)
+        case .chatterboxTurbo:
+          return try await chatterboxTurboEngine.generate(text, referenceAudio: chatterboxTurboReferenceAudio)
         case .cosyVoice2:
           // Handle voice conversion mode specially
           if cosyVoice2Engine.generationMode == .voiceConversion {
@@ -206,6 +218,8 @@ final class EngineManager {
         outeTTSEngine.generateStreaming(text, speaker: outeTTSSpeaker)
       case .chatterbox:
         chatterboxEngine.generateStreaming(text, referenceAudio: chatterboxReferenceAudio)
+      case .chatterboxTurbo:
+        chatterboxTurboEngine.generateStreaming(text, referenceAudio: chatterboxTurboReferenceAudio)
       case .cosyVoice2:
         cosyVoice2Engine.generateStreaming(text, speaker: cosyVoice2Speaker)
       case .cosyVoice3:
@@ -229,6 +243,8 @@ final class EngineManager {
           return try await outeTTSEngine.sayStreaming(text, speaker: outeTTSSpeaker)
         case .chatterbox:
           return try await chatterboxEngine.sayStreaming(text, referenceAudio: chatterboxReferenceAudio)
+        case .chatterboxTurbo:
+          return try await chatterboxTurboEngine.sayStreaming(text, referenceAudio: chatterboxTurboReferenceAudio)
         case .cosyVoice2:
           return try await cosyVoice2Engine.sayStreaming(text, speaker: cosyVoice2Speaker)
         case .cosyVoice3:

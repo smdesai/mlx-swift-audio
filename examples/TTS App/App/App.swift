@@ -1,6 +1,7 @@
 // Copyright © Anthony DePasquale
 
 import SwiftUI
+import MLXAudio
 
 @main
 struct MLXAudioApp: App {

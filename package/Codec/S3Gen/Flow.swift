@@ -72,6 +72,7 @@ class CausalMaskedDiffWithXvec: Module {
   ///   - finalize: Whether this is the final chunk
   ///   - nTimesteps: Number of diffusion timesteps (defaults to self.nTimesteps)
   ///   - streaming: Whether to use streaming (chunk-based) attention masking
+  ///   - meanflow: Whether to use meanflow mode (basic Euler without CFG) for Turbo models
   /// - Returns: Tuple of (mel_spectrogram, flow_cache)
   func inference(
     token: MLXArray,
@@ -84,6 +85,7 @@ class CausalMaskedDiffWithXvec: Module {
     finalize: Bool,
     nTimesteps: Int? = nil,
     streaming: Bool = false,
+    meanflow: Bool = false,
   ) -> (MLXArray, MLXArray?) {
     precondition(token.shape[0] == 1, "Batch size must be 1")
 
@@ -136,7 +138,7 @@ class CausalMaskedDiffWithXvec: Module {
     let totalLen = melLen1 + melLen2
     let decoderMask = MLXArray.ones([1, 1, totalLen]).asType(h.dtype)
 
-    // Generate mel features with streaming parameter
+    // Generate mel features with streaming and meanflow parameters
     let (feat, _) = decoder(
       mu: h.transposed(0, 2, 1),
       mask: decoderMask,
@@ -145,6 +147,7 @@ class CausalMaskedDiffWithXvec: Module {
       spks: embeddingNorm,
       cond: conds,
       streaming: streaming,
+      meanflow: meanflow,
     )
 
     // Extract only the new portion (after prompt)
