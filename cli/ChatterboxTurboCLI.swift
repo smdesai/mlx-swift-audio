@@ -43,7 +43,7 @@ struct ChatterboxTurboCLI: AsyncParsableCommand {
   @Option(name: [.short, .long], help: "Output audio file path (default: audio.wav)")
   var output: String = "audio.wav"
 
-  @Option(name: [.short, .long], help: "Model quantization: fp16, 8bit, 4bit (default: 4bit)")
+  @Option(name: [.short, .long], help: "Model quantization: full, fp16, 8bit, 4bit (default: 4bit)")
   var model: String = "4bit"
 
   @Option(name: .long, help: "Sampling temperature (default: 0.8, use 0 for deterministic)")
@@ -58,7 +58,7 @@ struct ChatterboxTurboCLI: AsyncParsableCommand {
   func run() async throws {
     // Parse quantization
     guard let quantization = ChatterboxTurboQuantization(rawValue: model) else {
-      throw ValidationError("Invalid model quantization '\(model)'. Must be one of: fp16, 8bit, 4bit")
+      throw ValidationError("Invalid model quantization '\(model)'. Must be one of: full, fp16, 8bit, 4bit")
     }
 
     // Validate reference audio exists

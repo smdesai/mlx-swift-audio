@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03DB76252EF8F21400925705 /* Kokoro in Frameworks */ = {isa = PBXBuildFile; productRef = 03DB76242EF8F21400925705 /* Kokoro */; };
+		03DB76272EF8F21400925705 /* MLXAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 03DB76262EF8F21400925705 /* MLXAudio */; };
 		0A6ECD582E6C2CE300837C54 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 0A6ECD572E6C2CE300837C54 /* MLXLLM */; };
 		0A6ECD5A2E6C2CE300837C54 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 0A6ECD592E6C2CE300837C54 /* MLXLMCommon */; };
-		92D6AB022EE0204C0062E6A9 /* MLXAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 92D6AB032EE0204C0062E6A9 /* MLXAudio */; };
-		92D6AB042EE0204C0062E6AA /* Kokoro in Frameworks */ = {isa = PBXBuildFile; productRef = 92D6AB052EE0204C0062E6AB /* Kokoro */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -43,10 +43,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				92D6AB022EE0204C0062E6A9 /* MLXAudio in Frameworks */,
-				92D6AB042EE0204C0062E6AA /* Kokoro in Frameworks */,
 				0A6ECD582E6C2CE300837C54 /* MLXLLM in Frameworks */,
 				0A6ECD5A2E6C2CE300837C54 /* MLXLMCommon in Frameworks */,
+				03DB76252EF8F21400925705 /* Kokoro in Frameworks */,
+				03DB76272EF8F21400925705 /* MLXAudio in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,10 +90,10 @@
 			);
 			name = "TTS App";
 			packageProductDependencies = (
-				92D6AB032EE0204C0062E6A9 /* MLXAudio */,
-				92D6AB052EE0204C0062E6AB /* Kokoro */,
 				0A6ECD572E6C2CE300837C54 /* MLXLLM */,
 				0A6ECD592E6C2CE300837C54 /* MLXLMCommon */,
+				03DB76242EF8F21400925705 /* Kokoro */,
+				03DB76262EF8F21400925705 /* MLXAudio */,
 			);
 			productName = "TTS App";
 			productReference = 26942CF62DABD3B400B82507 /* TTS App.app */;
@@ -125,7 +125,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
-				92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */,
+				03DB76232EF8F21400925705 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-cbt" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 26942CF72DABD3B400B82507 /* Products */;
@@ -407,9 +407,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */ = {
+		03DB76232EF8F21400925705 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-cbt" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../../../mlx-swift-audio";
+			relativePath = "../../../mlx-swift-audio-cbt";
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -425,6 +425,14 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		03DB76242EF8F21400925705 /* Kokoro */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Kokoro;
+		};
+		03DB76262EF8F21400925705 /* MLXAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXAudio;
+		};
 		0A6ECD572E6C2CE300837C54 /* MLXLLM */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
@@ -434,16 +442,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
-		};
-		92D6AB032EE0204C0062E6A9 /* MLXAudio */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */;
-			productName = MLXAudio;
-		};
-		92D6AB052EE0204C0062E6AB /* Kokoro */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */;
-			productName = Kokoro;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

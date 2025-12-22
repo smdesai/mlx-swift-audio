@@ -39,12 +39,15 @@ enum ChatterboxTurboTestHelper {
   ///
   /// Note: Do NOT mix this with ChatterboxTurboTTS in the same test run,
   /// as ChatterboxTurboTTS loads its own copy of the model internally.
-  static func getOrLoadModel() async throws -> ChatterboxTurboModel {
+  ///
+  /// For accuracy tests, use `.full` quantization to match Python checkpoints.
+  /// For performance tests, use `.q4` or `.q8`.
+  static func getOrLoadModel(quantization: ChatterboxTurboQuantization = .full) async throws -> ChatterboxTurboModel {
     if let model = _sharedModel {
       return model
     }
     print("[ChatterboxTurboTestHelper] Loading shared model (first time)...")
-    let model = try await ChatterboxTurboModel.load()
+    let model = try await ChatterboxTurboModel.load(quantization: quantization)
     eval(model)
     _sharedModel = model
     print("[ChatterboxTurboTestHelper] Shared model loaded and cached")

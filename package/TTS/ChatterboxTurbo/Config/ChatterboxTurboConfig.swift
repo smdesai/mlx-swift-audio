@@ -181,6 +181,7 @@ struct ChatterboxTurboModelConfig: Codable, Sendable {
 
 /// Quantization options for Chatterbox Turbo model weights
 public enum ChatterboxTurboQuantization: String, Sendable, CaseIterable {
+  case full // Full precision (for accuracy testing)
   case fp16
   case q8 = "8bit"
   case q4 = "4bit"

@@ -60,10 +60,12 @@ class ChatterboxTurboModel: Module {
   /// Get Hugging Face repository ID for specified quantization level
   static func repoId(quantization: ChatterboxTurboQuantization = .q4) -> String {
     switch quantization {
+    case .full:
+      return "smdesai/chatterbox-turbo"
     case .fp16:
-      return "mlx-community/chatterbox-turbo-fp16"
+      return "smdesai/chatterbox-turbo-fp16"
     case .q8:
-      return "mlx-community/chatterbox-turbo-8bit"
+      return "smdesai/chatterbox-turbo-8bit"
     case .q4:
       return "smdesai/chatterbox-turbo-4bit"
     }
@@ -191,6 +193,9 @@ class ChatterboxTurboModel: Module {
     for (key, value) in weights {
       // Skip S3Tokenizer weights - loaded from separate repo
       if key.hasPrefix("s3_tokenizer.") { continue }
+
+      // Skip S3Gen tokenizer weights (full model has S3Tokenizer inside S3Gen)
+      if key.hasPrefix("s3gen.tokenizer.") { continue }
 
       // Skip computed buffers
       if key.contains("freqsCis") || key.contains("freqs_cis") { continue }
@@ -352,11 +357,34 @@ class ChatterboxTurboModel: Module {
         finalKey = finalKey.replacingOccurrences(of: "out_nonlinear.batchnorm.", with: "out_nonlinear.0.")
       }
 
-      // Conv1d weight transposition for CAMPPlus
+      // Conv weight transposition for CAMPPlus (speaker_encoder)
+      // PyTorch Conv1d: (O, I, K) -> MLX Conv1d: (O, K, I)
+      // PyTorch Conv2d: (O, I, H, W) -> MLX Conv2d: (O, H, W, I)
       var finalValue = value
-      if finalKey.contains("speaker_encoder"), finalKey.hasSuffix(".weight"), value.ndim == 3 {
-        if value.shape[1] > value.shape[2] {
-          finalValue = value.swappedAxes(1, 2)
+      if finalKey.contains("speaker_encoder"), finalKey.hasSuffix(".weight") {
+        if value.ndim == 3 {
+          // Conv1d: transpose (O, I, K) -> (O, K, I)
+          if value.shape[1] > value.shape[2] {
+            finalValue = value.swappedAxes(1, 2)
+          }
+        } else if value.ndim == 4 {
+          // Conv2d: transpose (O, I, H, W) -> (O, H, W, I)
+          // CAMPPlus uses square kernels (1x1, 3x3), so we detect format by kernel position:
+          // - PyTorch (O, I, H, W): square kernel at end → shape[2] == shape[3]
+          // - MLX (O, H, W, I): square kernel in middle → shape[1] == shape[2]
+          //
+          // Examples:
+          //   (32, 1, 3, 3) PyTorch: shape[2]==shape[3] (3==3) → transpose
+          //   (32, 32, 3, 3) PyTorch: shape[2]==shape[3] (3==3) → transpose
+          //   (32, 3, 3, 1) MLX: shape[1]==shape[2] (3==3), shape[2]!=shape[3] → skip
+          //   (32, 3, 3, 32) MLX: shape[1]==shape[2] (3==3), shape[2]!=shape[3] → skip
+          let squareKernelAtEnd = value.shape[2] == value.shape[3] && value.shape[2] <= 7
+          let squareKernelInMiddle = value.shape[1] == value.shape[2] && value.shape[1] <= 7
+          // PyTorch format if kernel at end but NOT in middle (avoids ambiguous cases)
+          let isPyTorchFormat = squareKernelAtEnd && !squareKernelInMiddle
+          if isPyTorchFormat {
+            finalValue = value.transposed(0, 2, 3, 1)
+          }
         }
       }
 
@@ -412,13 +440,19 @@ class ChatterboxTurboModel: Module {
     // Initialize model
     let model = ChatterboxTurboModel()
 
-    // Check if model is quantized
+    // Check if model is quantized and apply correct quantization schema
     let isQuantized = weights.keys.contains { $0.contains(".scales") }
     if isQuantized {
-      Log.model.info("Detected quantized ChatterboxTurbo model weights")
+      // Determine bits based on quantization level
+      let bits: Int = switch quantization {
+        case .q8: 8
+        case .q4: 4
+        default: 4  // Fallback for unexpected cases
+      }
+      Log.model.info("Detected quantized ChatterboxTurbo model weights (bits=\(bits))")
       quantize(model: model) { path, _ in
         if weights["\(path).scales"] != nil {
-          return (64, 4, .affine)
+          return (64, bits, .affine)
         }
         return nil
       }
@@ -556,8 +590,8 @@ class ChatterboxTurboModel: Module {
     let plen = config.t3Config.speechCondPromptLen
     let t3CondPromptTokens = t3Tokens[0..., 0 ..< min(plen, t3Tokens.shape[1])]
 
-    // Voice encoder speaker embedding
-    let veEmbed = ve.embedsFromWavs(wavs: [refWav16kFull])
+    // Voice encoder speaker embedding (use truncated 16kHz audio like Python)
+    let veEmbed = ve.embedsFromWavs(wavs: [refWav16k])
     let veEmbedMean = veEmbed.mean(axis: 0, keepDims: true)
 
     let t3Cond = T3TurboCond(

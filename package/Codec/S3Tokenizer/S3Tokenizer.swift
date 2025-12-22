@@ -16,8 +16,10 @@ func precomputeFreqsCis(
   theta: Float = 10000.0,
   scaling: Float? = nil,
 ) -> (MLXArray, MLXArray) {
+  // Python uses step of 2: mx.arange(0, dim, 2)[: (dim // 2)]
+  // This creates [0, 2, 4, 6, ..., dim-2] then divides by dim
   let halfDim = dim / 2
-  let freqsExponent = MLXArray(0 ..< halfDim).asType(.float32) / Float(dim)
+  let freqsExponent = (MLXArray(0 ..< halfDim).asType(.float32) * 2.0) / Float(dim)
   let freqs = 1.0 / MLX.pow(MLXArray(theta), freqsExponent)
 
   var t = MLXArray(0 ..< end).asType(.float32)
@@ -330,7 +332,8 @@ class S3ResidualAttentionBlock: Module {
       nHead: nHead,
       kernelSize: kernelSize,
     )
-    _attnLn.wrappedValue = LayerNorm(dimensions: nState, eps: 1e-5)
+    // Python uses eps=1e-6 for attn_ln
+    _attnLn.wrappedValue = LayerNorm(dimensions: nState, eps: 1e-6)
 
     let nMlp = nState * 4
     _mlp.wrappedValue = Sequential {
@@ -338,6 +341,7 @@ class S3ResidualAttentionBlock: Module {
       GELU()
       Linear(nMlp, nState)
     }
+    // Python uses default eps (1e-5) for mlp_ln
     _mlpLn.wrappedValue = LayerNorm(dimensions: nState, eps: 1e-5)
   }
 

@@ -347,18 +347,25 @@ class T3Turbo: Module {
       processedLogits = processedLogits / temperature
     }
 
-    // Apply top-k
-    if topK > 0 {
-      processedLogits = topKFiltering(logits: processedLogits, topK: topK)
+    // Apply top-k and top-p (only if not greedy sampling)
+    if temperature > 0 {
+      if topK > 0 {
+        processedLogits = topKFiltering(logits: processedLogits, topK: topK)
+      }
+      if topP < 1.0 {
+        processedLogits = topPFiltering(logits: processedLogits, topP: topP)
+      }
     }
 
-    // Apply top-p
-    if topP < 1.0 {
-      processedLogits = topPFiltering(logits: processedLogits, topP: topP)
+    // Sample: greedy (argmax) for temperature=0, otherwise categorical
+    let nextToken: MLXArray
+    if temperature == 0 {
+      // Greedy decoding - pick the highest probability token
+      nextToken = MLX.argMax(processedLogits, axis: -1)
+    } else {
+      // Stochastic sampling
+      nextToken = MLXRandom.categorical(processedLogits)
     }
-
-    // Sample using categorical distribution
-    let nextToken = MLXRandom.categorical(processedLogits)
 
     return nextToken.expandedDimensions(axis: -1)
   }
