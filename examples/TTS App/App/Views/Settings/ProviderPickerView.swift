@@ -27,5 +27,6 @@ struct ProviderPickerView: View {
         Text(selectedProvider.displayName)
       }
     }
+    .buttonStyle(.bordered)
   }
 }

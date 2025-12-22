@@ -38,10 +38,10 @@ public enum ChatterboxQuantization: String, Sendable, CaseIterable {
 
 /// Available TTS providers
 public enum TTSProvider: String, CaseIterable, Identifiable, Sendable {
-  case cosyVoice2
-  case cosyVoice3
-  case chatterbox
   case chatterboxTurbo
+  case chatterbox
+  case cosyVoice3
+  case cosyVoice2
   case outetts
   case kokoro
   case orpheus

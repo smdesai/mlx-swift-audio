@@ -23,7 +23,7 @@ final class EngineManager {
   // MARK: - State
 
   /// Currently selected provider
-  private(set) var selectedProvider: TTSProvider = .cosyVoice2
+  private(set) var selectedProvider: TTSProvider = .chatterboxTurbo
 
   /// Whether a model is currently being loaded
   private(set) var isLoading: Bool = false
@@ -88,7 +88,7 @@ final class EngineManager {
 
   // MARK: - Initialization
 
-  init(initialProvider: TTSProvider = .cosyVoice2) {
+  init(initialProvider: TTSProvider = .chatterboxTurbo) {
     selectedProvider = initialProvider
   }
 
