@@ -676,6 +676,14 @@ class ChatterboxTurboModel: Module {
       wav = wav.squeezed(axis: 0)
     }
 
+    // Normalize output loudness to -27 LUFS (matches Python's pyloudnorm default)
+    let samples = wav.asArray(Float.self)
+    let normalizedSamples = LoudnessNormalizer.normalize(
+      samples,
+      sampleRate: ChatterboxTurboConstants.s3genSr
+    )
+    wav = MLXArray(normalizedSamples)
+
     return wav
   }
 }
