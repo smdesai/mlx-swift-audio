@@ -18,7 +18,7 @@ import Synchronization
 /// - No emotion exaggeration support
 /// - Uses topK instead of minP for sampling
 /// - Faster overall generation (roughly 2-3x speedup)
-actor ChatterboxTurboTTS {
+public actor ChatterboxTurboTTS {
   // MARK: - Properties
 
   // Model is nonisolated(unsafe) because it contains non-Sendable types (MLXArray)
@@ -45,7 +45,7 @@ actor ChatterboxTurboTTS {
   ///   - quantization: Quantization level (fp16, 8bit, 4bit). Default is 4bit.
   ///   - progressHandler: Optional callback for download progress
   /// - Returns: Initialized ChatterboxTurboTTS instance
-  static func load(
+  public static func load(
     quantization: ChatterboxTurboQuantization = .q4,
     progressHandler: @escaping @Sendable (Progress) -> Void = { _ in }
   ) async throws -> ChatterboxTurboTTS {
@@ -68,7 +68,7 @@ actor ChatterboxTurboTTS {
   ///   - refWav: Reference audio waveform (should be > 5 seconds)
   ///   - refSr: Sample rate of the reference audio
   /// - Returns: Pre-computed conditionals for generation
-  func prepareConditionals(
+  public func prepareConditionals(
     refWav: MLXArray,
     refSr: Int
   ) -> ChatterboxTurboConditionals {
@@ -97,7 +97,7 @@ actor ChatterboxTurboTTS {
   ///   - repetitionPenalty: Penalty for repeated tokens (default 1.2)
   ///   - maxNewTokens: Maximum tokens to generate per chunk (default 800)
   /// - Returns: Generated audio result
-  func generate(
+  public func generate(
     text: String,
     conditionals: ChatterboxTurboConditionals,
     temperature: Float = 0.8,
@@ -184,7 +184,7 @@ actor ChatterboxTurboTTS {
   }
 
   /// Output sample rate
-  var sampleRate: Int {
+  public var sampleRate: Int {
     ChatterboxTurboConstants.s3genSr
   }
 

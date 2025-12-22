@@ -15,6 +15,11 @@ let package = Package(
       name: "Kokoro",
       targets: ["Kokoro"],
     ),
+    // Command-line tool for Chatterbox Turbo TTS
+    .executable(
+      name: "chatterbox-turbo",
+      targets: ["ChatterboxTurboCLI"],
+    ),
   ],
   dependencies: [
     .package(url: "https://github.com/ml-explore/mlx-swift-lm", branch: "main"),
@@ -24,6 +29,7 @@ let package = Package(
     // espeak-ng is GPLv3 licensed - only linked when using Kokoro
     // TODO: Switch back to upstream after https://github.com/espeak-ng/espeak-ng/pull/2327 is merged
     .package(url: "https://github.com/DePasqualeOrg/espeak-ng-spm.git", branch: "fix-path-espeak-data-macro"),
+    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
   ],
   targets: [
     .target(
@@ -54,6 +60,14 @@ let package = Package(
       name: "MLXAudioTests",
       dependencies: ["MLXAudio"],
       path: "package/Tests",
+    ),
+    .executableTarget(
+      name: "ChatterboxTurboCLI",
+      dependencies: [
+        "MLXAudio",
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
+      ],
+      path: "cli",
     ),
   ],
 )

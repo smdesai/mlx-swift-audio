@@ -1,0 +1,107 @@
+#!/bin/sh
+
+# Wrapper to run command line tools built with Xcode or swift build.
+# This sets up the library paths so MLX can find its Metal shaders.
+#
+# For Xcode builds (RECOMMENDED):
+#   1. Open Package.swift in Xcode
+#   2. Select the scheme (e.g., chatterbox-turbo)
+#   3. Build (Cmd+B) - use Release for best performance
+#   4. Run: ./mlx-run chatterbox-turbo --help
+#
+# For swift build (Metal shaders may not be available):
+#   swift build -c release
+#   ./mlx-run --swiftpm chatterbox-turbo --help
+#
+# Examples:
+#   ./mlx-run chatterbox-turbo --help
+#   ./mlx-run chatterbox-turbo --text "Hello world" --reference voice.wav
+#   ./mlx-run --debug chatterbox-turbo --help
+
+if [ "$#" -lt 1 ]; then
+	echo "usage: mlx-run [--debug/--release] [--swiftpm] <tool-name> arguments"
+	echo ""
+	echo "Options:"
+	echo "  --debug    Use debug build (default: release)"
+	echo "  --release  Use release build"
+	echo "  --swiftpm  Use swift build output instead of Xcode"
+	echo "  --list     List available Xcode schemes"
+	exit 1
+fi
+
+CONFIGURATION=Release
+USE_SWIFTPM=0
+
+while true; do
+	case "$1" in
+		--release)
+			CONFIGURATION=Release
+			shift
+			;;
+		--debug)
+			CONFIGURATION=Debug
+			shift
+			;;
+		--swiftpm)
+			USE_SWIFTPM=1
+			shift
+			;;
+		--list)
+			xcodebuild -list 2>/dev/null || echo "No Xcode project found"
+			exit 0
+			;;
+		*)
+			break
+			;;
+	esac
+done
+
+COMMAND="$1"
+shift
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ "$USE_SWIFTPM" = "1" ]; then
+	# Use swift build output
+	if [ "$CONFIGURATION" = "Debug" ]; then
+		BUILD_DIR="$SCRIPT_DIR/.build/debug"
+	else
+		BUILD_DIR="$SCRIPT_DIR/.build/release"
+	fi
+
+	if [ ! -f "$BUILD_DIR/$COMMAND" ]; then
+		echo "Error: $BUILD_DIR/$COMMAND does not exist"
+		echo "Build first with: swift build -c $(echo $CONFIGURATION | tr '[:upper:]' '[:lower:]')"
+		exit 1
+	fi
+
+	export DYLD_FRAMEWORK_PATH="$BUILD_DIR/PackageFrameworks:$BUILD_DIR:$DYLD_FRAMEWORK_PATH"
+	export DYLD_LIBRARY_PATH="$BUILD_DIR:$DYLD_LIBRARY_PATH"
+	exec "$BUILD_DIR/$COMMAND" "$@"
+else
+	# Use Xcode build output (recommended)
+	BUILD_DIR=$(xcodebuild -configuration $CONFIGURATION -showBuildSettings -scheme "$COMMAND" 2>/dev/null | grep 'BUILT_PRODUCTS_DIR = /' | sed -e 's/^[^=]*= //g')
+
+	if [ -z "$BUILD_DIR" ]; then
+		echo "Error: Could not find Xcode build for scheme '$COMMAND'"
+		echo ""
+		echo "To build with Xcode:"
+		echo "  1. Open Package.swift in Xcode"
+		echo "  2. Select the '$COMMAND' scheme"
+		echo "  3. Build with Cmd+B"
+		echo ""
+		echo "Or use --swiftpm flag to use swift build output (Metal may not work)"
+		exit 1
+	fi
+
+	if [ -d "$BUILD_DIR/$COMMAND.app" ]; then
+		exec "$BUILD_DIR/$COMMAND.app/Contents/MacOS/$COMMAND" "$@" &
+	elif [ -f "$BUILD_DIR/$COMMAND" ]; then
+		export DYLD_FRAMEWORK_PATH="$BUILD_DIR/PackageFrameworks:$BUILD_DIR:$DYLD_FRAMEWORK_PATH"
+		exec "$BUILD_DIR/$COMMAND" "$@"
+	else
+		echo "Error: $BUILD_DIR/$COMMAND does not exist"
+		echo "Build first in Xcode (Cmd+B)"
+		exit 1
+	fi
+fi

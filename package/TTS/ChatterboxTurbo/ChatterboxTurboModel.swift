@@ -16,7 +16,7 @@ import Tokenizers
 /// Marked `@unchecked Sendable` because it contains non-Sendable MLXArray fields
 /// (via `T3TurboCond` and `S3GenRefDict`), but all access is controlled within the
 /// `ChatterboxTurboTTS` actor's methods.
-struct ChatterboxTurboConditionals: @unchecked Sendable {
+public struct ChatterboxTurboConditionals: @unchecked Sendable {
   /// T3 Turbo conditioning (speaker embedding, prompt tokens)
   var t3: T3TurboCond
 
@@ -48,11 +48,14 @@ class ChatterboxTurboModel: Module {
   /// Hugging Face repository for S3TokenizerV2 (shared across TTS models)
   static let s3TokenizerRepoId = "mlx-community/S3TokenizerV2"
 
-  /// Hugging Face repository for GPT-2 tokenizer base (has tokenizer.json + tokenizer_class)
-  static let gpt2TokenizerRepoId = "EleutherAI/gpt-neo-125m"
+  /* -sd-
+  /// Tokenizer files from model directory (base tokenizer + emotion tokens)
+  static let tokenizerFiles = ["tokenizer.json", "tokenizer_config.json",
+    "added_tokens.json"]
+  */
 
-  /// Additional tokenizer files from model directory (emotion tokens)
-  static let additionalTokenizerFiles = ["added_tokens.json"]
+  /// Tokenizer files from model directory
+  static let tokenizerFiles = ["tokenizer.json", "tokenizer_config.json"]
 
   /// Get Hugging Face repository ID for specified quantization level
   static func repoId(quantization: ChatterboxTurboQuantization = .q4) -> String {
@@ -62,7 +65,7 @@ class ChatterboxTurboModel: Module {
     case .q8:
       return "mlx-community/chatterbox-turbo-8bit"
     case .q4:
-      return "mlx-community/chatterbox-turbo-4bit"
+      return "smdesai/chatterbox-turbo-4bit"
     }
   }
 
@@ -104,17 +107,18 @@ class ChatterboxTurboModel: Module {
     _s3Tokenizer.wrappedValue = S3TokenizerV2()
   }
 
+  /*
   /// Load text tokenizer with emotion control tokens
   ///
-  /// Downloads GPT-2's tokenizer.json and merges in the emotion tokens from
-  /// the model's added_tokens.json to support emotion control tags like
+  /// Loads tokenizer.json from the model directory and merges in the emotion tokens
+  /// from added_tokens.json to support emotion control tags like
   /// [laugh], [sigh], [cough], [gasp], [chuckle], etc.
-  func loadTextTokenizer(gpt2Directory: URL, modelDirectory: URL) async throws {
-    // Load GPT-2's tokenizer.json
-    let gpt2TokenizerURL = gpt2Directory.appending(path: "tokenizer.json")
-    let gpt2TokenizerData = try Data(contentsOf: gpt2TokenizerURL)
-    guard var tokenizerDict = try JSONSerialization.jsonObject(with: gpt2TokenizerData) as? [String: Any] else {
-      throw ChatterboxTurboError.tokenizerLoadFailed("Failed to parse GPT-2 tokenizer.json")
+  func loadTextTokenizer(from modelDirectory: URL) async throws {
+    // Load base tokenizer.json from model directory
+    let tokenizerURL = modelDirectory.appending(path: "tokenizer.json")
+    let tokenizerData = try Data(contentsOf: tokenizerURL)
+    guard var tokenizerDict = try JSONSerialization.jsonObject(with: tokenizerData) as? [String: Any] else {
+      throw ChatterboxTurboError.tokenizerLoadFailed("Failed to parse tokenizer.json")
     }
 
     // Load added_tokens.json from model directory (contains emotion tokens)
@@ -151,16 +155,26 @@ class ChatterboxTurboModel: Module {
     let mergedData = try JSONSerialization.data(withJSONObject: tokenizerDict, options: .prettyPrinted)
     try mergedData.write(to: mergedTokenizerURL)
 
-    // Copy tokenizer_config.json from GPT-2 directory (has tokenizer_class)
-    let gpt2ConfigURL = gpt2Directory.appending(path: "tokenizer_config.json")
+    // Copy tokenizer_config.json from model directory
+    let configURL = modelDirectory.appending(path: "tokenizer_config.json")
     let tempConfigURL = tempDir.appending(path: "tokenizer_config.json")
-    if FileManager.default.fileExists(atPath: gpt2ConfigURL.path) {
+    if FileManager.default.fileExists(atPath: configURL.path) {
       try? FileManager.default.removeItem(at: tempConfigURL)
-      try FileManager.default.copyItem(at: gpt2ConfigURL, to: tempConfigURL)
+      try FileManager.default.copyItem(at: configURL, to: tempConfigURL)
     }
 
     // Load tokenizer from temporary directory
     textTokenizer = try await AutoTokenizer.from(modelFolder: tempDir)
+  }
+  */
+
+  /// Load text tokenizer with emotion control tokens
+  ///
+  /// Loads tokenizer.json from the model directory. The tokenizer.json already
+  /// includes emotion control tokens like [laugh], [sigh], [cough], [gasp], etc.
+  func loadTextTokenizer(from modelDirectory: URL) async throws {
+    textTokenizer = try await AutoTokenizer.from(modelFolder: modelDirectory)
+    Log.model.info("Loaded GPT-2 tokenizer with emotion control tokens")
   }
 
   /// Output sample rate
@@ -371,8 +385,10 @@ class ChatterboxTurboModel: Module {
 
     Log.model.info("Loading ChatterboxTurbo (\(quantization.rawValue)) from \(repoId)...")
 
-    // Model files include added_tokens.json for emotion control
-    let modelFiles = ["model.safetensors", "config.json", "conds.safetensors"] + additionalTokenizerFiles
+    // Model files include tokenizer files for emotion control
+    let modelFiles = ["model.safetensors", "config.json", "conds.safetensors"] +
+        tokenizerFiles
+
     async let modelDirectoryTask = HubConfiguration.shared.snapshot(
       from: repoId,
       matching: modelFiles,
@@ -385,16 +401,8 @@ class ChatterboxTurboModel: Module {
       progressHandler: progressHandler
     )
 
-    // Download GPT-2 tokenizer files (tokenizer.json has proper format)
-    async let gpt2TokenizerDirectoryTask = HubConfiguration.shared.snapshot(
-      from: gpt2TokenizerRepoId,
-      matching: ["tokenizer.json", "tokenizer_config.json"],
-      progressHandler: progressHandler
-    )
-
-    let (modelDirectory, s3TokenizerDirectory, gpt2TokenizerDirectory) = try await (
-      modelDirectoryTask, s3TokenizerDirectoryTask, gpt2TokenizerDirectoryTask
-    )
+    let (modelDirectory, s3TokenizerDirectory) = try await (modelDirectoryTask,
+          s3TokenizerDirectoryTask)
 
     // Load Chatterbox Turbo weights and sanitize
     let weightFileURL = modelDirectory.appending(path: "model.safetensors")
@@ -436,8 +444,8 @@ class ChatterboxTurboModel: Module {
     model.train(false)
     eval(model)
 
-    // Load tokenizer (merges GPT-2 base with emotion control tokens from model)
-    try await model.loadTextTokenizer(gpt2Directory: gpt2TokenizerDirectory, modelDirectory: modelDirectory)
+    // Load tokenizer (merges base tokenizer with emotion control tokens)
+    try await model.loadTextTokenizer(from: modelDirectory)
 
     // Load pre-computed conditionals if available
     let condsURL = modelDirectory.appending(path: "conds.safetensors")
