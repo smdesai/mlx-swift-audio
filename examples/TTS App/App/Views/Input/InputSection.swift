@@ -54,7 +54,7 @@ struct InputSection: View {
           }
           .padding(.vertical, 4)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
         .disabled(appState.isModelLoading || appState.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
         Text(appState.streamingGranularity.shortDescription)
