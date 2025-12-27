@@ -53,16 +53,16 @@ struct ReferenceAudioPicker: View {
 
       // Actions
       HStack(spacing: 12) {
-        SourceButton(title: "Default", isDisabled: isLoading) {
+        SourceButton(title: "Default", icon: "waveform", isDisabled: isLoading) {
           Task { await loadDefault() }
         }
-        SourceButton(title: "File", isDisabled: isLoading) {
+        SourceButton(title: "File", icon: "folder", isDisabled: isLoading) {
           isShowingFilePicker = true
         }
-        SourceButton(title: "URL", isDisabled: isLoading) {
+        SourceButton(title: "URL", icon: "link", isDisabled: isLoading) {
           isShowingURLInput = true
         }
-        SourceButton(title: "Record", isDisabled: isLoading) {
+        SourceButton(title: "Record", icon: "mic.fill", isDisabled: isLoading) {
           isShowingRecorder = true
         }
       }
@@ -172,19 +172,29 @@ struct ReferenceAudioPicker: View {
 
 private struct SourceButton: View {
   let title: String
+  let icon: String
   let isDisabled: Bool
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
-      Text(title)
-        .font(.system(size: 13, weight: .medium))
-        .foregroundStyle(isDisabled ? .white.opacity(0.3) : .white)
-        .frame(maxWidth: .infinity)
-        .frame(height: 36)
-        .background(Color.white.opacity(isDisabled ? 0.03 : 0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+      VStack(spacing: 6) {
+        Image(systemName: icon)
+          .font(.system(size: 18, weight: .medium))
+        Text(title)
+          .font(.system(size: 11, weight: .medium))
+      }
+      .foregroundStyle(isDisabled ? .white.opacity(0.3) : .white.opacity(0.9))
+      .frame(maxWidth: .infinity)
+      .frame(height: 56)
+      .background(Color.white.opacity(isDisabled ? 0.03 : 0.1))
+      .clipShape(RoundedRectangle(cornerRadius: 12))
+      .overlay(
+        RoundedRectangle(cornerRadius: 12)
+          .stroke(Color.white.opacity(isDisabled ? 0.05 : 0.2), lineWidth: 1)
+      )
     }
+    .buttonStyle(.plain)
     .disabled(isDisabled)
   }
 }
