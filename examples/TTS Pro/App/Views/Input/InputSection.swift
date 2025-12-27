@@ -50,8 +50,8 @@ struct InputSection: View {
               try? await appState.loadEngine()
             }
 
-            // Use word highlighting for Chatterbox Turbo
-            if appState.selectedProvider == .chatterboxTurbo {
+            // Use word highlighting for Chatterbox Turbo if enabled
+            if appState.selectedProvider == .chatterboxTurbo && appState.highlightingEnabled {
               await appState.generateStreamingWithHighlighting()
             } else {
               await appState.generateStreaming()
@@ -59,8 +59,9 @@ struct InputSection: View {
           }
         } label: {
           HStack(spacing: 8) {
-            Image(systemName: appState.selectedProvider == .chatterboxTurbo ? "waveform.and.person.filled" : "waveform.path")
-            Text(appState.selectedProvider == .chatterboxTurbo ? "Stream with Highlighting" : "Stream")
+            Image(systemName: appState.selectedProvider == .chatterboxTurbo && appState.highlightingEnabled
+              ? "waveform.and.person.filled" : "waveform.path")
+            Text("Stream")
           }
           .padding(.vertical, 4)
         }

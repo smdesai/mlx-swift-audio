@@ -115,6 +115,21 @@ private struct TextInputSection: View {
           .textCase(.uppercase)
           .tracking(0.5)
 
+        // Highlighting toggle (only for Chatterbox Turbo)
+        if appState.selectedProvider == .chatterboxTurbo {
+          Button {
+            appState.highlightingEnabled.toggle()
+          } label: {
+            Image(systemName: appState.highlightingEnabled ? "highlighter" : "text.alignleft")
+              .font(.system(size: 14))
+              .foregroundStyle(appState.highlightingEnabled ? .white : .white.opacity(0.4))
+          }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(appState.highlightingEnabled ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.1))
+          .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+
         Spacer()
 
         Text("\(appState.inputText.count) / 5000")
@@ -170,10 +185,10 @@ private struct ActionsSection: View {
 
       // Buttons
       HStack(spacing: 12) {
-        // Stream (with highlighting for Chatterbox Turbo)
+        // Stream (with highlighting for Chatterbox Turbo if enabled)
         MinimalButton(
-          title: appState.selectedProvider == .chatterboxTurbo ? "Stream with Highlighting" : "Stream",
-          icon: appState.selectedProvider == .chatterboxTurbo ? "waveform.and.person.filled" : "waveform.path",
+          title: appState.selectedProvider == .chatterboxTurbo && appState.highlightingEnabled ? "Stream + Highlight" : "Stream",
+          icon: appState.selectedProvider == .chatterboxTurbo && appState.highlightingEnabled ? "waveform.and.person.filled" : "waveform.path",
           style: .secondary,
           isDisabled: appState.isModelLoading || appState.isGenerating || !canAct
         ) {
@@ -181,8 +196,8 @@ private struct ActionsSection: View {
             if !appState.isLoaded {
               try? await appState.loadEngine()
             }
-            // Use word highlighting for Chatterbox Turbo
-            if appState.selectedProvider == .chatterboxTurbo {
+            // Use word highlighting for Chatterbox Turbo if enabled
+            if appState.selectedProvider == .chatterboxTurbo && appState.highlightingEnabled {
               await appState.generateStreamingWithHighlighting()
             } else {
               await appState.generateStreaming()

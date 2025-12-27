@@ -76,9 +76,22 @@ struct HighlightedTextView: View {
     VStack(alignment: .leading, spacing: 8) {
       // Header (optional)
       if showHeader {
+        @Bindable var appState = appState
         HStack {
           Text("Text Input")
             .font(.headline)
+
+          // Highlighting toggle button
+          Button {
+            appState.highlightingEnabled.toggle()
+          } label: {
+            Image(systemName: appState.highlightingEnabled ? "highlighter" : "text.alignleft")
+              .font(.caption)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .tint(appState.highlightingEnabled ? .accentColor : .secondary)
+          .help(appState.highlightingEnabled ? "Highlighting enabled" : "Highlighting disabled")
 
           Spacer()
 

@@ -29,6 +29,9 @@ final class AppState {
 
   // MARK: - Word Highlighting
 
+  /// Whether word highlighting is enabled for streaming (user preference)
+  var highlightingEnabled: Bool = true
+
   /// Whether we're currently in highlighting mode (showing highlighted text instead of editor)
   private(set) var isHighlighting: Bool = false
 
