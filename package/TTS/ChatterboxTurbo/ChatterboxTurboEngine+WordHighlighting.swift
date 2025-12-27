@@ -16,18 +16,29 @@ extension ChatterboxTurboEngine {
     /// Total audio duration in seconds
     public let duration: TimeInterval
 
-    /// Processing time in seconds
+    /// Processing time in seconds (total generation time)
     public let processingTime: TimeInterval
+
+    /// Time to first audio chunk in seconds (latency before audio starts)
+    public let timeToFirstAudio: TimeInterval
 
     /// The display text that matches the character ranges in wordTimings
     /// This may differ from the input text if the aligner skips certain characters
     public let displayText: String
 
-    public init(wordTimings: [HighlightedWord], allSamples: [Float], duration: TimeInterval, processingTime: TimeInterval, displayText: String) {
+    public init(
+      wordTimings: [HighlightedWord],
+      allSamples: [Float],
+      duration: TimeInterval,
+      processingTime: TimeInterval,
+      timeToFirstAudio: TimeInterval,
+      displayText: String
+    ) {
       self.wordTimings = wordTimings
       self.allSamples = allSamples
       self.duration = duration
       self.processingTime = processingTime
+      self.timeToFirstAudio = timeToFirstAudio
       self.displayText = displayText
     }
   }
@@ -58,6 +69,7 @@ extension ChatterboxTurboEngine {
     }
 
     let startTime = Date()
+    var timeToFirstAudio: TimeInterval = 0
 
     // Stream with timings
     let stream = generateStreamingWithTimings(
@@ -69,8 +81,15 @@ extension ChatterboxTurboEngine {
     var allTimings: [HighlightedWord] = []
     var allSamples: [Float] = []
     var timeOffset: TimeInterval = 0
+    var isFirstChunk = true
 
     for try await chunk in stream {
+      // Capture time to first audio on first chunk
+      if isFirstChunk {
+        timeToFirstAudio = Date().timeIntervalSince(startTime)
+        isFirstChunk = false
+      }
+
       // Adjust time offsets for consecutive chunks
       let adjustedTimings = chunk.wordTimings.map { timing in
         HighlightedWord(
@@ -96,6 +115,7 @@ extension ChatterboxTurboEngine {
       allSamples: allSamples,
       duration: duration,
       processingTime: processingTime,
+      timeToFirstAudio: timeToFirstAudio,
       displayText: trimmedText
     )
   }
@@ -217,6 +237,9 @@ extension ChatterboxTurboEngine {
   ) async throws -> WordTimingResult {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
+    let startTime = Date()
+    var timeToFirstAudio: TimeInterval = 0
+
     // First, collect all the chunks with timings
     let stream = generateStreamingWithTimings(
       trimmedText,
@@ -226,17 +249,26 @@ extension ChatterboxTurboEngine {
 
     var allTimings: [HighlightedWord] = []
     var allSamples: [Float] = []
+    var isFirstChunk = true
 
     for try await chunk in stream {
+      // Capture time to first audio on first chunk
+      if isFirstChunk {
+        timeToFirstAudio = Date().timeIntervalSince(startTime)
+        isFirstChunk = false
+      }
+
       allTimings.append(contentsOf: chunk.wordTimings)
       allSamples.append(contentsOf: chunk.samples)
     }
+
+    let processingTime = Date().timeIntervalSince(startTime)
 
     // Play the collected audio
     let audioResult = AudioResult.samples(
       data: allSamples,
       sampleRate: provider.sampleRate,
-      processingTime: 0
+      processingTime: processingTime
     )
 
     await play(audioResult)
@@ -247,7 +279,102 @@ extension ChatterboxTurboEngine {
       wordTimings: allTimings,
       allSamples: allSamples,
       duration: duration,
-      processingTime: 0,
+      processingTime: processingTime,
+      timeToFirstAudio: timeToFirstAudio,
+      displayText: trimmedText
+    )
+  }
+
+  /// Play audio with true streaming - audio plays as chunks are generated.
+  ///
+  /// Unlike `sayWithTimings()` which waits for all audio before playing,
+  /// this method starts playback immediately when the first chunk is ready,
+  /// reducing perceived latency.
+  ///
+  /// - Parameters:
+  ///   - text: The text to synthesize
+  ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
+  ///   - aligner: The forced aligner to use for word timing
+  ///   - onTimingsUpdate: Called each time new word timings are available (for incremental UI updates)
+  ///   - onFirstAudio: Called when the first audio chunk is ready (for TTFA tracking)
+  /// - Returns: WordTimingResult containing all word timings and metadata
+  @discardableResult
+  public func sayStreamingWithTimings(
+    _ text: String,
+    referenceAudio: ChatterboxTurboReferenceAudio? = nil,
+    aligner: ForcedAligner? = nil,
+    onTimingsUpdate: (([HighlightedWord]) -> Void)? = nil,
+    onFirstAudio: ((TimeInterval) -> Void)? = nil
+  ) async throws -> WordTimingResult {
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !trimmedText.isEmpty else {
+      throw TTSError.invalidArgument("Text cannot be empty")
+    }
+
+    let startTime = Date()
+    var timeToFirstAudio: TimeInterval = 0
+    let playback = getPlaybackController()
+
+    // Stop any previous playback before starting new generation
+    await playback.stopAudio()
+
+    // Get the streaming chunks with timings
+    let stream = generateStreamingWithTimings(
+      trimmedText,
+      referenceAudio: referenceAudio,
+      aligner: aligner
+    )
+
+    var allTimings: [HighlightedWord] = []
+    var allSamples: [Float] = []
+    var isFirstChunk = true
+
+    // Start playback state
+    setIsPlaying(true)
+    setIsGenerating(true)
+
+    do {
+      for try await chunk in stream {
+        // Capture time to first audio on first chunk
+        if isFirstChunk {
+          timeToFirstAudio = Date().timeIntervalSince(startTime)
+          onFirstAudio?(timeToFirstAudio)
+          isFirstChunk = false
+        }
+
+        // Timings from generateStreamingWithTimings() are already adjusted with absolute times
+        // Just accumulate them directly
+        allTimings.append(contentsOf: chunk.wordTimings)
+        onTimingsUpdate?(allTimings)
+
+        // Collect samples and enqueue immediately for playback
+        allSamples.append(contentsOf: chunk.samples)
+        playback.enqueue(samples: chunk.samples, prebufferSeconds: 0)
+      }
+
+      setIsGenerating(false)
+
+      // Wait for all audio to finish playing
+      await playback.awaitAudioDrain()
+      setIsPlaying(false)
+
+    } catch {
+      setIsGenerating(false)
+      setIsPlaying(false)
+      await playback.stopAudio()
+      throw error
+    }
+
+    let processingTime = Date().timeIntervalSince(startTime)
+    let duration = Double(allSamples.count) / Double(provider.sampleRate)
+
+    return WordTimingResult(
+      wordTimings: allTimings,
+      allSamples: allSamples,
+      duration: duration,
+      processingTime: processingTime,
+      timeToFirstAudio: timeToFirstAudio,
       displayText: trimmedText
     )
   }

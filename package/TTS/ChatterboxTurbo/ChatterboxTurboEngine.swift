@@ -91,6 +91,21 @@ public final class ChatterboxTurboEngine: TTSEngine {
     chatterboxTurboTTS
   }
 
+  /// Internal accessor for playback controller (for word highlighting extension)
+  func getPlaybackController() -> TTSPlaybackController {
+    playback
+  }
+
+  /// Internal setter for isPlaying (for word highlighting extension)
+  func setIsPlaying(_ value: Bool) {
+    isPlaying = value
+  }
+
+  /// Internal setter for isGenerating (for word highlighting extension)
+  func setIsGenerating(_ value: Bool) {
+    isGenerating = value
+  }
+
   // MARK: - Private Properties
 
   @ObservationIgnored private var chatterboxTurboTTS: ChatterboxTurboTTS?

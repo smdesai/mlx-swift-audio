@@ -84,6 +84,9 @@ final class AppState {
 
   private(set) var lastResult: AudioResult?
 
+  /// Time to first audio in seconds (for streaming with highlighting)
+  private(set) var timeToFirstAudio: TimeInterval = 0
+
   // MARK: - Delegated State (from EngineManager)
 
   var selectedProvider: TTSProvider { engineManager.selectedProvider }
@@ -202,6 +205,9 @@ final class AppState {
   }
 
   /// Generate with streaming and word highlighting (for Chatterbox Turbo)
+  ///
+  /// Uses true streaming - audio starts playing as soon as the first chunk is ready,
+  /// reducing perceived latency compared to batch-then-play.
   func generateStreamingWithHighlighting() async {
     guard canGenerate else { return }
     guard selectedProvider == .chatterboxTurbo else {
@@ -212,36 +218,35 @@ final class AppState {
     // Enter highlighting mode
     isHighlighting = true
     currentHighlightedWordIndex = nil
-    statusMessage = "Streaming..."
+    highlightingDisplayText = inputText
+    timingsSourceText = inputText
+    timeToFirstAudio = 0
+    statusMessage = "Generating..."
 
     do {
-      // Generate the word timings
-      let timingsResult = try await engineManager.chatterboxTurboEngine.generateWithTimings(
+      // Use true streaming - audio plays as chunks arrive
+      let timingsResult = try await engineManager.chatterboxTurboEngine.sayStreamingWithTimings(
         inputText,
-        referenceAudio: chatterboxTurboReferenceAudio
-      )
-
-      // Store timings with their source text for validation
-      wordTimings = timingsResult.wordTimings
-      highlightingDisplayText = timingsResult.displayText
-      timingsSourceText = inputText
-
-      Log.audio.debug("Word timings: \(self.wordTimings.count) words, duration: \(timingsResult.duration.formatted(decimals: 2))s")
-
-      // Start highlight update timer to poll playback position
-      startHighlightUpdateTimer(duration: timingsResult.duration)
-
-      // Play the actual audio (playback position is tracked by the engine)
-      await engineManager.chatterboxTurboEngine.play(
-        .samples(
-          data: timingsResult.allSamples,
-          sampleRate: 24000,
-          processingTime: timingsResult.processingTime
-        )
+        referenceAudio: chatterboxTurboReferenceAudio,
+        onTimingsUpdate: { [weak self] timings in
+          // Update word timings incrementally as chunks arrive
+          self?.wordTimings = timings
+        },
+        onFirstAudio: { [weak self] ttfa in
+          guard let self else { return }
+          // Capture TTFA and start highlight timer
+          timeToFirstAudio = ttfa
+          statusMessage = "Playing..."
+          Log.audio.debug("Time to first audio: \(ttfa.formatted(decimals: 2))s")
+          // Start highlight update timer now that audio is playing
+          startHighlightUpdateTimer(duration: 0) // Duration not needed, timer runs until playback stops
+        }
       )
 
       // Playback complete - stop timer
       stopHighlightUpdateTimer()
+
+      Log.audio.debug("Word timings: \(timingsResult.wordTimings.count) words, duration: \(timingsResult.duration.formatted(decimals: 2))s, TTFA: \(timingsResult.timeToFirstAudio.formatted(decimals: 2))s")
 
       // Create AudioResult with duration
       lastResult = .samples(
@@ -250,7 +255,7 @@ final class AppState {
         processingTime: timingsResult.processingTime
       )
 
-      statusMessage = formatResultStatus(lastResult!)
+      statusMessage = formatResultStatusWithTTFA(lastResult!, ttfa: timingsResult.timeToFirstAudio)
 
       // Exit highlighting mode and return to editor after playback completes
       isHighlighting = false
@@ -386,6 +391,22 @@ final class AppState {
     }
 
     return "Generated in \(timeStr) sec."
+  }
+
+  private func formatResultStatusWithTTFA(_ result: AudioResult, ttfa: TimeInterval) -> String {
+    let timeStr = result.processingTime.formatted(decimals: 2)
+    let ttfaStr = ttfa.formatted(decimals: 2)
+
+    if let duration = result.duration {
+      let durationStr = duration.formatted(decimals: 2)
+      if let rtf = result.realTimeFactor {
+        let rtfStr = rtf.formatted(decimals: 2)
+        return "Generated \(durationStr)s audio in \(timeStr)s (TTFA: \(ttfaStr)s, RTF: \(rtfStr)x)"
+      }
+      return "Generated \(durationStr)s audio in \(timeStr)s (TTFA: \(ttfaStr)s)"
+    }
+
+    return "Generated in \(timeStr)s (TTFA: \(ttfaStr)s)"
   }
 }
 

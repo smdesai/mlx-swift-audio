@@ -30,7 +30,8 @@ struct CompactLayoutView: View {
           ActionsSection()
 
           // Output
-          OutputDisplay()
+//          OutputDisplay()
+          OutputSection()
         }
         .padding(.horizontal, 24)
         .padding(.top, 20)

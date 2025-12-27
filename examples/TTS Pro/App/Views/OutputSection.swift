@@ -10,7 +10,10 @@ struct OutputSection: View {
     VStack(alignment: .leading, spacing: 16) {
       // Section header
       Text("Output")
-        .font(.headline)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white.opacity(0.5))
+        .textCase(.uppercase)
+        .tracking(0.5)
 
       // Status and metrics
       StatusView()
@@ -63,6 +66,7 @@ private struct StatusView: View {
 // MARK: - Audio Metrics
 
 private struct AudioMetricsView: View {
+  @Environment(AppState.self) private var appState
   let result: AudioResult
 
   var body: some View {
@@ -75,9 +79,18 @@ private struct AudioMetricsView: View {
         )
       }
 
+      // Show TTFA if available (only for streaming with highlighting)
+      if appState.timeToFirstAudio > 0 {
+        MetricItem(
+          icon: "bolt.fill",
+          label: "TTFA",
+          value: formatTime(appState.timeToFirstAudio)
+        )
+      }
+
       MetricItem(
         icon: "clock",
-        label: "Generated in",
+        label: "Total time",
         value: formatTime(result.processingTime)
       )
 
