@@ -16,6 +16,9 @@ public final class AudioSamplePlayer {
   /// Number of samples currently queued for playback
   public private(set) var queuedSampleCount: Int = 0
 
+  /// Current playback position in seconds
+  public private(set) var playbackPosition: TimeInterval = 0
+
   // MARK: - Private Properties
 
   @ObservationIgnored private var engine: AVAudioEngine!
@@ -24,6 +27,9 @@ public final class AudioSamplePlayer {
   @ObservationIgnored private var hasStartedPlayback: Bool = false
   @ObservationIgnored private var playbackCompletionContinuation: CheckedContinuation<Void, Never>?
   @ObservationIgnored private var drainContinuations: [CheckedContinuation<Void, Never>] = []
+  @ObservationIgnored private var totalSamplesEnqueued: Int = 0
+  @ObservationIgnored private var samplesPlayed: Int = 0
+  @ObservationIgnored private var playbackStartTime: Date?
 
   private let sampleRate: Int
 
@@ -80,11 +86,17 @@ public final class AudioSamplePlayer {
       return
     }
 
-    scheduleBuffer(buffer)
+    scheduleBuffer(samples.count, buffer)
 
     playerNode.play()
     isPlaying = true
     hasStartedPlayback = true
+    playbackStartTime = Date()
+    samplesPlayed = 0
+    totalSamplesEnqueued = samples.count
+
+    // Start playback position timer
+    startPlaybackTimer()
 
     // Await completion (resumed by buffer completion callback)
     await withCheckedContinuation { continuation in
@@ -100,6 +112,16 @@ public final class AudioSamplePlayer {
     guard !samples.isEmpty else { return }
 
     resetEngineIfNeeded()
+
+    // Start tracking on first enqueue
+    if !hasStartedPlayback {
+      playbackStartTime = Date()
+      samplesPlayed = 0
+      totalSamplesEnqueued = 0
+      startPlaybackTimer()
+    }
+
+    totalSamplesEnqueued += samples.count
 
     // Schedule in small slices for smoother streaming
     let sliceSamples = max(1, Int(0.03 * Double(sampleRate))) // 30ms slices
@@ -121,7 +143,11 @@ public final class AudioSamplePlayer {
       playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
         Task { @MainActor [weak self] in
           guard let self else { return }
+          samplesPlayed += decrementAmount
           queuedSampleCount = max(0, queuedSampleCount - decrementAmount)
+
+          // Update playback position
+          playbackPosition = Double(samplesPlayed) / Double(sampleRate)
 
           // When queue drains, mark playback complete and resume all waiting continuations
           if queuedSampleCount == 0, hasStartedPlayback {
@@ -182,6 +208,10 @@ public final class AudioSamplePlayer {
     isPlaying = false
     hasStartedPlayback = false
     queuedSampleCount = 0
+    playbackPosition = 0
+    samplesPlayed = 0
+    totalSamplesEnqueued = 0
+    playbackStartTime = nil
 
     Log.audio.debug("Audio playback stopped")
   }
@@ -257,12 +287,18 @@ public final class AudioSamplePlayer {
     return buffer
   }
 
-  private func scheduleBuffer(_ buffer: AVAudioPCMBuffer) {
+  private func scheduleBuffer(_ sampleCount: Int, _ buffer: AVAudioPCMBuffer) {
     playerNode.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
       Task { @MainActor [weak self] in
         guard let self else { return }
-        // Playback complete when player stops
-        if hasStartedPlayback, !playerNode.isPlaying {
+        samplesPlayed += sampleCount
+        // Update playback position based on samples played
+        playbackPosition = Double(samplesPlayed) / Double(sampleRate)
+
+        // Buffer playback complete - resume continuation
+        // Note: playerNode.isPlaying may still be true until explicitly stopped,
+        // but .dataPlayedBack guarantees the audio data has been rendered
+        if hasStartedPlayback {
           isPlaying = false
           hasStartedPlayback = false
           playbackCompletionContinuation?.resume()
@@ -270,6 +306,27 @@ public final class AudioSamplePlayer {
         }
       }
     }
+  }
+
+  private func startPlaybackTimer() {
+    // Cancel any existing timer
+    Task { [weak self] in
+      await self?.stopPlaybackTimer()
+    }
+
+    // Start a timer to update playback position during playback
+    Task { [weak self] in
+      while self?.isPlaying == true {
+        try? await Task.sleep(for: .milliseconds(50))
+        if let startTime = self?.playbackStartTime {
+          self?.playbackPosition = Date().timeIntervalSince(startTime)
+        }
+      }
+    }
+  }
+
+  private func stopPlaybackTimer() async {
+    // Timer will stop automatically when isPlaying becomes false
   }
 
   private func resetEngineIfNeeded() {

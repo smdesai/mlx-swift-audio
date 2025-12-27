@@ -29,6 +29,9 @@ public protocol TTSEngine: Observable {
   /// Whether audio playback is currently in progress
   var isPlaying: Bool { get }
 
+  /// Current playback position in seconds (for word highlighting)
+  var playbackPosition: TimeInterval { get }
+
   /// URL of the last generated audio file (for sharing/export)
   var lastGeneratedAudioURL: URL? { get }
 
@@ -71,6 +74,11 @@ public extension TTSEngine {
   /// Load the model without progress reporting
   func load() async throws {
     try await load(progressHandler: nil)
+  }
+
+  /// Default playback position (engines without word highlighting support)
+  var playbackPosition: TimeInterval {
+    0
   }
 }
 

@@ -1,0 +1,23 @@
+// Copyright © Anthony DePasquale
+
+import SwiftUI
+import MLXAudio
+
+@main
+struct TTSProApp: App {
+  init() {
+    #if os(iOS)
+    AudioSessionManager.configure()
+    #endif
+  }
+
+  var body: some Scene {
+    WindowGroup {
+      ContentView()
+    }
+    #if os(macOS)
+    .windowStyle(.automatic)
+    .defaultSize(width: 900, height: 600)
+    #endif
+  }
+}

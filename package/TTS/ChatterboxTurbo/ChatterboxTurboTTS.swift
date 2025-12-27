@@ -194,13 +194,101 @@ actor ChatterboxTurboTTS {
     }
   }
 
+  // MARK: - Word Highlighting
+
+  /// Generate audio from text as a stream with word-level timing information.
+  ///
+  /// This method generates audio and provides word-level timing information
+  /// that can be used to highlight words as they're spoken during playback.
+  ///
+  /// - Parameters:
+  ///   - text: Text to synthesize
+  ///   - conditionals: Pre-computed reference audio conditionals
+  ///   - aligner: The forced aligner to use for word timing (defaults to TokenBasedAligner)
+  ///   - temperature: Sampling temperature
+  ///   - topK: Top-k sampling value
+  ///   - topP: Top-p sampling threshold
+  ///   - repetitionPenalty: Penalty for repeated tokens
+  ///   - maxNewTokens: Maximum tokens to generate per chunk (default 800)
+  /// - Returns: An async stream of audio chunks with word timings
+  func generateStreamingWithTimings(
+    text: String,
+    conditionals: ChatterboxTurboConditionals,
+    aligner: ForcedAligner? = nil,
+    temperature: Float = 0.8,
+    topK: Int = 1000,
+    topP: Float = 0.95,
+    repetitionPenalty: Float = 1.2,
+    maxNewTokens: Int = 800
+  ) -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
+    let effectiveAligner = aligner ?? TokenBasedAligner()
+    let chunks = splitTextForGeneration(text)
+    let chunkIndex = Atomic<Int>(0)
+
+    // Pre-calculate chunk offsets in the original text
+    let offsetData: [(offset: String.Index, nextSearchStart: String.Index)] = chunks.reduce(into: []) { data, chunk in
+      let searchStart = data.last?.nextSearchStart ?? text.startIndex
+      let searchRange = searchStart..<text.endIndex
+      if let range = text.range(of: chunk, range: searchRange) {
+        data.append((range.lowerBound, range.upperBound))
+      } else {
+        data.append((searchStart, searchStart))
+      }
+    }
+    let chunkOffsets = offsetData.map { $0.offset }
+
+    return AsyncThrowingStream {
+      let i = chunkIndex.wrappingAdd(1, ordering: .relaxed).oldValue
+      guard i < chunks.count else { return nil }
+
+      try Task.checkCancellation()
+
+      let chunkText = chunks[i]
+      let baseOffset = chunkOffsets[i]
+      let startTime = CFAbsoluteTimeGetCurrent()
+
+      // Generate audio for this chunk
+      let audioArray = self.model.generate(
+        text: chunkText,
+        conds: conditionals,
+        temperature: temperature,
+        repetitionPenalty: repetitionPenalty,
+        topP: topP,
+        topK: topK,
+        maxNewTokens: maxNewTokens
+      )
+
+      audioArray.eval()
+      let samples = audioArray.asArray(Float.self)
+      MLXMemory.clearCache()
+
+      // Run forced alignment on this chunk's audio with full text context
+      let wordTimings = effectiveAligner.align(
+        text: chunkText,
+        fullText: text,
+        baseOffset: baseOffset,
+        audioSamples: samples,
+        sampleRate: ChatterboxTurboS3GenSr
+      )
+
+      let processingTime = CFAbsoluteTimeGetCurrent() - startTime
+
+      return AudioChunkWithTimings(
+        samples: samples,
+        sampleRate: ChatterboxTurboS3GenSr,
+        processingTime: processingTime,
+        wordTimings: wordTimings
+      )
+    }
+  }
+
   // MARK: - Private Methods
 
   /// Split text into chunks suitable for generation.
   ///
   /// First splits into sentences using SentenceTokenizer, then splits any
   /// oversized sentences using TextSplitter.
-  private func splitTextForGeneration(_ text: String) -> [String] {
+  public func splitTextForGeneration(_ text: String) -> [String] {
     let sentences = SentenceTokenizer.splitIntoSentences(text: text)
     var result: [String] = []
 

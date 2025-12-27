@@ -79,6 +79,18 @@ public final class ChatterboxTurboEngine: TTSEngine {
   /// Maximum number of tokens to generate
   public var maxNewTokens: Int = 1000
 
+  // MARK: - Internal Properties (for extensions)
+
+  /// Current playback position in seconds (for word highlighting)
+  public var playbackPosition: TimeInterval {
+    playback.playbackPosition
+  }
+
+  /// Internal accessor for TTS model (for word highlighting extension)
+  func getChatterboxTurboTTS() -> ChatterboxTurboTTS? {
+    chatterboxTurboTTS
+  }
+
   // MARK: - Private Properties
 
   @ObservationIgnored private var chatterboxTurboTTS: ChatterboxTurboTTS?

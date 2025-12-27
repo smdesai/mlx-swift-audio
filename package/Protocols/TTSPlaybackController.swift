@@ -33,6 +33,11 @@ public final class TTSPlaybackController {
 
   // MARK: - Initialization
 
+  /// Current playback position in seconds
+  public var playbackPosition: TimeInterval {
+    audioPlayer.playbackPosition
+  }
+
   public init(sampleRate: Int) {
     audioPlayer = AudioSamplePlayer(sampleRate: sampleRate)
   }
