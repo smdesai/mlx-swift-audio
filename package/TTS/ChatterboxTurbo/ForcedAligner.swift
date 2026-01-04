@@ -1,7 +1,7 @@
 // Copyright © Sachin Desai
 
+import Accelerate
 import Foundation
-import MLX
 
 // MARK: - ForcedAligner Protocol
 
@@ -416,20 +416,48 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
       return []
     }
 
-    // Convert alignment matrix to cost matrix (negative attention = lower cost = better)
-    // Add diagonal bias: penalize cells far from the expected diagonal position
+    // Convert alignment matrix to cost matrix using Accelerate for vectorization
+    // cost = -attention + diagonal_penalty
     // This encourages proportional alignment (speech_pos / total_speech ≈ text_pos / total_text)
     var costMatrix = [Float](repeating: 0, count: numTextTokens * numSpeechTokens)
     let diagonalWeight: Float = 0.3
 
-    for textIdx in 0..<numTextTokens {
-      let expectedSpeechRatio = Float(textIdx) / Float(max(1, numTextTokens - 1))
-      for speechIdx in 0..<numSpeechTokens {
-        let actualSpeechRatio = Float(speechIdx) / Float(max(1, numSpeechTokens - 1))
-        let diagonalPenalty = abs(expectedSpeechRatio - actualSpeechRatio) * diagonalWeight
+    // Pre-compute speech ratios vector once (0/(M-1), 1/(M-1), ..., (M-1)/(M-1))
+    var speechRatios = [Float](repeating: 0, count: numSpeechTokens)
+    let speechScale = 1.0 / Float(max(1, numSpeechTokens - 1))
+    vDSP_vramp([Float(0)], [speechScale], &speechRatios, 1, vDSP_Length(numSpeechTokens))
 
-        let attnValue = alignmentMatrix[textIdx * numSpeechTokens + speechIdx]
-        costMatrix[textIdx * numSpeechTokens + speechIdx] = -attnValue + diagonalPenalty
+    // Process each text row with vectorized operations
+    for textIdx in 0..<numTextTokens {
+      let expectedRatio = Float(textIdx) / Float(max(1, numTextTokens - 1))
+      let rowOffset = textIdx * numSpeechTokens
+
+      // Compute |expectedRatio - speechRatios[j]| for all j using vDSP
+      var diagonalPenalties = [Float](repeating: 0, count: numSpeechTokens)
+
+      // diagonalPenalties = speechRatios - expectedRatio
+      var negExpected = -expectedRatio
+      vDSP_vsadd(speechRatios, 1, &negExpected, &diagonalPenalties, 1, vDSP_Length(numSpeechTokens))
+
+      // diagonalPenalties = |diagonalPenalties|
+      vDSP_vabs(diagonalPenalties, 1, &diagonalPenalties, 1, vDSP_Length(numSpeechTokens))
+
+      // diagonalPenalties *= diagonalWeight
+      var weight = diagonalWeight
+      vDSP_vsmul(diagonalPenalties, 1, &weight, &diagonalPenalties, 1, vDSP_Length(numSpeechTokens))
+
+      // costMatrix[row] = -alignmentMatrix[row] + diagonalPenalties
+      alignmentMatrix.withUnsafeBufferPointer { alignBuf in
+        // First negate the alignment row
+        var negOne: Float = -1.0
+        vDSP_vsmul(alignBuf.baseAddress! + rowOffset, 1, &negOne, &costMatrix[rowOffset], 1, vDSP_Length(numSpeechTokens))
+      }
+
+      // Then add diagonal penalties
+      costMatrix.withUnsafeMutableBufferPointer { costBuf in
+        vDSP_vadd(costBuf.baseAddress! + rowOffset, 1,
+                  diagonalPenalties, 1,
+                  costBuf.baseAddress! + rowOffset, 1, vDSP_Length(numSpeechTokens))
       }
     }
 
@@ -452,59 +480,25 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
 
   // MARK: - Private Methods
 
-  /// Build alignment matrix (T_text, T_speech) by averaging attention from configured heads.
+  /// Build alignment matrix (T_text, T_speech) from pre-extracted attention.
+  /// Attention is already averaged across heads during generation.
   private func buildAlignmentMatrix() -> [Float]? {
-    guard let config = alignmentData.config else { return nil }
-    guard !alignmentData.attentions.isEmpty else { return nil }
+    guard alignmentData.config != nil else { return nil }
+    guard !alignmentData.textAttention.isEmpty else { return nil }
 
     let numTextTokens = alignmentData.textTokenCount
     let numSpeechTokens = alignmentData.speechTokenCount
-    let condLen = alignmentData.conditioningLength
 
     guard numTextTokens > 0, numSpeechTokens > 0 else { return nil }
 
-    // Initialize matrix (text tokens x speech tokens)
+    // Initialize matrix (text tokens x speech tokens) in row-major order
     var matrix = [Float](repeating: 0, count: numTextTokens * numSpeechTokens)
 
-    // Process each speech token's attention
-    for (speechIdx, attnDict) in alignmentData.attentions {
+    // Copy pre-extracted attention directly (already averaged across heads)
+    for (speechIdx, textAttn) in alignmentData.textAttention.enumerated() {
       guard speechIdx < numSpeechTokens else { continue }
-
-      // Average attention across configured heads
-      var avgAttention = [Float](repeating: 0, count: numTextTokens)
-      var headCount = 0
-
-      for (layer, head) in config.heads {
-        guard let layerAttn = attnDict[layer] else { continue }
-
-        // layerAttn shape: (B, numHeads, 1, T_key)
-        // Extract the specific head
-        let headAttn = layerAttn[0, head, 0, 0...]
-
-        // T_key = condLen + numTextTokens + speechIdx (grows during generation)
-        // We want attention over text tokens: indices [condLen, condLen + numTextTokens)
-        let keyLen = headAttn.shape[0]
-        let textStart = condLen
-        let textEnd = min(condLen + numTextTokens, keyLen)
-
-        if textStart < textEnd {
-          // Extract text attention slice
-          let textAttn = headAttn[textStart ..< textEnd].asArray(Float.self)
-
-          // Add to average
-          for (i, a) in textAttn.enumerated() where i < numTextTokens {
-            avgAttention[i] += a
-          }
-          headCount += 1
-        }
-      }
-
-      // Normalize by head count
-      if headCount > 0 {
-        for i in 0 ..< numTextTokens {
-          avgAttention[i] /= Float(headCount)
-          matrix[i * numSpeechTokens + speechIdx] = avgAttention[i]
-        }
+      for (textIdx, attn) in textAttn.enumerated() where textIdx < numTextTokens {
+        matrix[textIdx * numSpeechTokens + speechIdx] = attn
       }
     }
 

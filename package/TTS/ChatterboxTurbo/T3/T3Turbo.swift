@@ -396,14 +396,8 @@ class T3Turbo: Module, @unchecked Sendable {
               break
             }
           }
-          // Generation complete - provide alignment data
-          let alignData = state.getAlignmentData()
-          onComplete(AlignmentData(
-            attentions: alignData.attentions,
-            textTokenCount: alignData.textTokenCount,
-            conditioningLength: alignData.conditioningLength,
-            config: alignData.config
-          ))
+          // Generation complete - provide alignment data (already optimized Float arrays)
+          onComplete(state.getAlignmentData())
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -440,27 +434,23 @@ public struct AlignmentHeadConfig: Sendable {
   }
 }
 
-/// Data structure containing captured alignment attention
-/// Note: @unchecked because MLXArray is reference-counted and thread-safe
-public struct AlignmentData: @unchecked Sendable {
-  /// Per-speech-token attention weights: (speechIdx, layer -> attention)
-  /// Each attention is (B, numHeads, 1, T_key)
-  public let attentions: [(speechIdx: Int, attentions: [Int: MLXArray])]
+/// Data structure containing captured alignment attention (optimized Float storage)
+public struct AlignmentData: Sendable {
+  /// Pre-extracted text attention per speech token: [speechIdx][textIdx] = averaged attention
+  /// Already extracted and averaged across configured heads during generation
+  public let textAttention: [[Float]]
 
   /// Number of text tokens in the input
   public let textTokenCount: Int
 
-  /// Length of conditioning prefix (speaker + prompt)
+  /// Number of speech tokens generated
+  public let speechTokenCount: Int
+
+  /// Length of conditioning prefix (speaker + prompt) - kept for compatibility
   public let conditioningLength: Int
 
   /// The alignment head configuration used
   public let config: AlignmentHeadConfig?
-
-  /// Total number of speech tokens generated (max index + 1)
-  public var speechTokenCount: Int {
-    guard let maxIdx = attentions.map({ $0.speechIdx }).max() else { return 0 }
-    return maxIdx + 1
-  }
 
   /// Time per speech token in seconds (at 25Hz)
   public static let secondsPerToken: TimeInterval = 0.04 // 40ms
@@ -498,14 +488,51 @@ private final class T3TurboStreamState: @unchecked Sendable {
   var chunkTokens: [Int32] = []
   var stepCount = 0
 
-  // Attention accumulation state
-  // Each entry: (speechTokenIndex, layer, attentionWeights)
-  // Attention weights are (B, numHeads, 1, T_key) for each step
-  var accumulatedAttentions: [(speechIdx: Int, attentions: [Int: MLXArray])] = []
+  // Optimized attention accumulation: pre-extracted Float arrays per speech token
+  // Each entry is averaged attention over text tokens for one speech position
+  var accumulatedTextAttention: [[Float]] = []
 
   // Text token count (for building alignment matrix)
   var textTokenCount: Int = 0
   var conditioningLength: Int = 0
+
+  // Helper to extract and average text attention from MLXArray attentions
+  private func extractTextAttention(from attentions: [Int: MLXArray]) -> [Float] {
+    guard let config = alignmentConfig, !attentions.isEmpty else { return [] }
+
+    var avgAttention = [Float](repeating: 0, count: textTokenCount)
+    var headCount = 0
+
+    for (layer, head) in config.heads {
+      guard let layerAttn = attentions[layer] else { continue }
+
+      // layerAttn shape: (B, numHeads, 1, T_key)
+      let headAttn = layerAttn[0, head, 0, 0...]
+
+      // Extract text attention slice: [condLen, condLen + textTokenCount)
+      let keyLen = headAttn.shape[0]
+      let textStart = conditioningLength
+      let textEnd = min(conditioningLength + textTokenCount, keyLen)
+
+      if textStart < textEnd {
+        let textAttn = headAttn[textStart..<textEnd].asArray(Float.self)
+        for (i, a) in textAttn.enumerated() where i < textTokenCount {
+          avgAttention[i] += a
+        }
+        headCount += 1
+      }
+    }
+
+    // Normalize by head count
+    if headCount > 1 {
+      let scale = 1.0 / Float(headCount)
+      for i in 0..<avgAttention.count {
+        avgAttention[i] *= scale
+      }
+    }
+
+    return avgAttention
+  }
 
   init(
     model: T3Turbo,
@@ -560,10 +587,8 @@ private final class T3TurboStreamState: @unchecked Sendable {
         cache: cache,
         outputAttentionsForLayers: alignmentLayers
       )
-      // Store attention for the first speech token (BOS position)
-      // The attention shape is (B, numHeads, T_query, T_key)
-      // For prefill, T_query = full sequence length
-      // We want the last position's attention over all keys
+      // Extract and convert attention for the first speech token immediately
+      // This releases GPU memory right away instead of holding MLXArrays
       if !modelOutput.attentions.isEmpty {
         var lastPosAttention: [Int: MLXArray] = [:]
         for (layer, attn) in modelOutput.attentions {
@@ -571,7 +596,10 @@ private final class T3TurboStreamState: @unchecked Sendable {
           let lastPos = attn[0..., 0..., (attn.shape[2] - 1) ..< attn.shape[2], 0...]
           lastPosAttention[layer] = lastPos
         }
-        accumulatedAttentions.append((speechIdx: 0, attentions: lastPosAttention))
+        let textAttn = extractTextAttention(from: lastPosAttention)
+        if !textAttn.isEmpty {
+          accumulatedTextAttention.append(textAttn)
+        }
       }
     } else {
       modelOutput = GPT2ModelOutput(
@@ -600,7 +628,7 @@ private final class T3TurboStreamState: @unchecked Sendable {
     generatedIds.reserveCapacity(maxGenLen + 1)
     chunkTokens.reserveCapacity(chunkSize + 1)
     if alignmentConfig != nil {
-      accumulatedAttentions.reserveCapacity(maxGenLen + 1)
+      accumulatedTextAttention.reserveCapacity(maxGenLen + 1)
     }
 
     if let c = cache { asyncEval(nextSpeechToken, c) } else { asyncEval(nextSpeechToken) }
@@ -643,11 +671,12 @@ private final class T3TurboStreamState: @unchecked Sendable {
         )
         hiddenStates = modelOutput.hiddenStates
 
-        // Store attention for this speech token
-        // For single-token generation, attention is (B, numHeads, 1, T_key)
-        // T_key grows as KV cache accumulates
+        // Extract and convert attention immediately to release GPU memory
         if !modelOutput.attentions.isEmpty {
-          accumulatedAttentions.append((speechIdx: generatedIds.count, attentions: modelOutput.attentions))
+          let textAttn = extractTextAttention(from: modelOutput.attentions)
+          if !textAttn.isEmpty {
+            accumulatedTextAttention.append(textAttn)
+          }
         }
       } else {
         hiddenStates = model.tfmr(inputsEmbeds: currentSpeechEmbed, cache: cache)
@@ -703,15 +732,15 @@ private final class T3TurboStreamState: @unchecked Sendable {
     return nil
   }
 
-  /// Get accumulated attention data for alignment
-  /// - Returns: Tuple of (accumulatedAttentions, textTokenCount, conditioningLength, alignmentConfig)
-  func getAlignmentData() -> (
-    attentions: [(speechIdx: Int, attentions: [Int: MLXArray])],
-    textTokenCount: Int,
-    conditioningLength: Int,
-    config: AlignmentHeadConfig?
-  ) {
-    (accumulatedAttentions, textTokenCount, conditioningLength, alignmentConfig)
+  /// Get accumulated attention data for alignment (already extracted as Float arrays)
+  func getAlignmentData() -> AlignmentData {
+    AlignmentData(
+      textAttention: accumulatedTextAttention,
+      textTokenCount: textTokenCount,
+      speechTokenCount: accumulatedTextAttention.count,
+      conditioningLength: conditioningLength,
+      config: alignmentConfig
+    )
   }
 }
 

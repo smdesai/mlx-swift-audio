@@ -72,3 +72,6 @@ xcuserdata/
 
 # Agents
 CLAUDE.local.md
+
+# Continuous Claude cache (local only)
+.claude/cache/
