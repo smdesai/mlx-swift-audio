@@ -340,6 +340,143 @@ struct AlignmentAccuracyTests {
   }
 }
 
+// MARK: - Sparse Attention Sampling Tests
+
+@Suite(.serialized)
+struct SparseAttentionSamplingTests {
+
+  /// Test linear interpolation of attention vectors
+  @Test func interpolateAttentionVectors() {
+    // Arrange: Create sparse samples at positions 0, 4, 8
+    let textTokenCount = 3
+    let sparseSamples: [(index: Int, attention: [Float])] = [
+      (0, [1.0, 0.0, 0.0]),   // Position 0: attention on first text token
+      (4, [0.0, 1.0, 0.0]),   // Position 4: attention on second text token
+      (8, [0.0, 0.0, 1.0]),   // Position 8: attention on third text token
+    ]
+    let totalSpeechTokens = 9
+
+    // Act: Interpolate to get full attention matrix
+    let fullAttention = SparseAttentionInterpolator.interpolate(
+      sparseSamples: sparseSamples,
+      totalSpeechTokens: totalSpeechTokens,
+      textTokenCount: textTokenCount
+    )
+
+    // Assert: Check interpolated values
+    #expect(fullAttention.count == totalSpeechTokens)
+
+    // Position 0: exact sample [1, 0, 0]
+    #expect(fullAttention[0] == [1.0, 0.0, 0.0])
+
+    // Position 2: midpoint between 0 and 4 → [0.5, 0.5, 0]
+    #expect(abs(fullAttention[2][0] - 0.5) < 0.01)
+    #expect(abs(fullAttention[2][1] - 0.5) < 0.01)
+    #expect(abs(fullAttention[2][2] - 0.0) < 0.01)
+
+    // Position 4: exact sample [0, 1, 0]
+    #expect(fullAttention[4] == [0.0, 1.0, 0.0])
+
+    // Position 6: midpoint between 4 and 8 → [0, 0.5, 0.5]
+    #expect(abs(fullAttention[6][0] - 0.0) < 0.01)
+    #expect(abs(fullAttention[6][1] - 0.5) < 0.01)
+    #expect(abs(fullAttention[6][2] - 0.5) < 0.01)
+
+    // Position 8: exact sample [0, 0, 1]
+    #expect(fullAttention[8] == [0.0, 0.0, 1.0])
+  }
+
+  /// Test edge case: single sample (no interpolation needed)
+  @Test func singleSampleNoInterpolation() {
+    let sparseSamples: [(index: Int, attention: [Float])] = [
+      (0, [0.5, 0.3, 0.2]),
+    ]
+
+    let fullAttention = SparseAttentionInterpolator.interpolate(
+      sparseSamples: sparseSamples,
+      totalSpeechTokens: 3,
+      textTokenCount: 3
+    )
+
+    // All positions should extrapolate from the single sample
+    #expect(fullAttention.count == 3)
+    #expect(fullAttention[0] == [0.5, 0.3, 0.2])
+    #expect(fullAttention[1] == [0.5, 0.3, 0.2])
+    #expect(fullAttention[2] == [0.5, 0.3, 0.2])
+  }
+
+  /// Test extrapolation before first sample
+  @Test func extrapolateBeforeFirstSample() {
+    let sparseSamples: [(index: Int, attention: [Float])] = [
+      (2, [1.0, 0.0]),
+      (4, [0.0, 1.0]),
+    ]
+
+    let fullAttention = SparseAttentionInterpolator.interpolate(
+      sparseSamples: sparseSamples,
+      totalSpeechTokens: 5,
+      textTokenCount: 2
+    )
+
+    // Positions 0, 1 should use first sample (no extrapolation beyond bounds)
+    #expect(fullAttention[0] == [1.0, 0.0])
+    #expect(fullAttention[1] == [1.0, 0.0])
+    #expect(fullAttention[2] == [1.0, 0.0])
+  }
+
+  /// Test that sparse sampling produces similar results to full sampling
+  @Test func sparseSamplingQuality() {
+    // Simulate a realistic attention pattern (smooth transition across text tokens)
+    let textTokenCount = 5
+    let totalSpeechTokens = 20
+
+    // Create "ground truth" full attention (gradual focus shift across text)
+    var fullSamples: [[Float]] = []
+    for speechIdx in 0..<totalSpeechTokens {
+      let progress = Float(speechIdx) / Float(totalSpeechTokens - 1)
+      var attention = [Float](repeating: 0, count: textTokenCount)
+      // Create a soft focus that shifts from first to last text token
+      for textIdx in 0..<textTokenCount {
+        let textProgress = Float(textIdx) / Float(textTokenCount - 1)
+        let distance = abs(textProgress - progress)
+        attention[textIdx] = exp(-distance * 3) // Gaussian-like falloff
+      }
+      // Normalize
+      let sum = attention.reduce(0, +)
+      if sum > 0 { attention = attention.map { $0 / sum } }
+      fullSamples.append(attention)
+    }
+
+    // Create sparse samples (every 4th token)
+    let sampleInterval = 4
+    var sparseSamples: [(index: Int, attention: [Float])] = []
+    for i in stride(from: 0, to: totalSpeechTokens, by: sampleInterval) {
+      sparseSamples.append((index: i, attention: fullSamples[i]))
+    }
+
+    // Interpolate
+    let interpolated = SparseAttentionInterpolator.interpolate(
+      sparseSamples: sparseSamples,
+      totalSpeechTokens: totalSpeechTokens,
+      textTokenCount: textTokenCount
+    )
+
+    // Measure error between full and interpolated
+    var totalError: Float = 0
+    for i in 0..<totalSpeechTokens {
+      for j in 0..<textTokenCount {
+        let error = abs(fullSamples[i][j] - interpolated[i][j])
+        totalError += error
+      }
+    }
+    let avgError = totalError / Float(totalSpeechTokens * textTokenCount)
+
+    // Sparse sampling should produce low interpolation error for smooth patterns
+    print("[SparseQuality] Average interpolation error: \(String(format: "%.4f", avgError))")
+    #expect(avgError < 0.1, "Interpolation error should be small for smooth attention patterns")
+  }
+}
+
 // MARK: - Helpers
 
 private extension String {

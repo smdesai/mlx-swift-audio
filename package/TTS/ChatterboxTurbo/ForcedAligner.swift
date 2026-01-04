@@ -58,6 +58,97 @@ extension ForcedAligner {
   }
 }
 
+// MARK: - Sparse Attention Interpolation
+
+/// Interpolates sparse attention samples to produce a full attention matrix.
+///
+/// When using sparse attention sampling (extracting every Nth token), this utility
+/// linearly interpolates between sampled positions to reconstruct the full matrix.
+/// This reduces GPU memory and CPU transfer overhead while maintaining alignment quality.
+public enum SparseAttentionInterpolator {
+
+  /// Interpolate sparse attention samples to produce full attention for all speech positions.
+  ///
+  /// - Parameters:
+  ///   - sparseSamples: Array of (index, attention) tuples at sampled positions
+  ///   - totalSpeechTokens: Total number of speech tokens to interpolate
+  ///   - textTokenCount: Number of text tokens (dimension of attention vectors)
+  /// - Returns: Full attention matrix as `[[Float]]` with one entry per speech token
+  public static func interpolate(
+    sparseSamples: [(index: Int, attention: [Float])],
+    totalSpeechTokens: Int,
+    textTokenCount: Int
+  ) -> [[Float]] {
+    guard !sparseSamples.isEmpty else {
+      return Array(repeating: [Float](repeating: 0, count: textTokenCount), count: totalSpeechTokens)
+    }
+
+    // Sort samples by index
+    let sorted = sparseSamples.sorted { $0.index < $1.index }
+
+    var result: [[Float]] = []
+    result.reserveCapacity(totalSpeechTokens)
+
+    for i in 0..<totalSpeechTokens {
+      // Find bracketing samples
+      let (prevSample, nextSample) = findBracketingSamples(for: i, in: sorted)
+
+      if prevSample.index == i {
+        // Exact match - use sample directly
+        result.append(prevSample.attention)
+      } else if prevSample.index == nextSample.index {
+        // Single sample or extrapolation - use nearest
+        result.append(prevSample.attention)
+      } else {
+        // Linear interpolation between prev and next
+        let t = Float(i - prevSample.index) / Float(nextSample.index - prevSample.index)
+        var interpolated = [Float](repeating: 0, count: textTokenCount)
+        for j in 0..<min(textTokenCount, prevSample.attention.count, nextSample.attention.count) {
+          interpolated[j] = (1 - t) * prevSample.attention[j] + t * nextSample.attention[j]
+        }
+        result.append(interpolated)
+      }
+    }
+
+    return result
+  }
+
+  /// Find the samples that bracket the given index for interpolation.
+  private static func findBracketingSamples(
+    for index: Int,
+    in sorted: [(index: Int, attention: [Float])]
+  ) -> (prev: (index: Int, attention: [Float]), next: (index: Int, attention: [Float])) {
+    // Handle edge cases
+    guard let first = sorted.first, let last = sorted.last else {
+      fatalError("findBracketingSamples called with empty sorted array")
+    }
+
+    // Before first sample - extrapolate using first
+    if index <= first.index {
+      return (first, first)
+    }
+
+    // After last sample - extrapolate using last
+    if index >= last.index {
+      return (last, last)
+    }
+
+    // Find bracketing samples
+    var prev = first
+    for sample in sorted {
+      if sample.index == index {
+        return (sample, sample)
+      }
+      if sample.index > index {
+        return (prev, sample)
+      }
+      prev = sample
+    }
+
+    return (last, last)
+  }
+}
+
 // MARK: - TokenBasedAligner
 
 /// Lightweight forced aligner that estimates word timings using audio duration and text analysis.

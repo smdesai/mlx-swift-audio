@@ -414,6 +414,10 @@ public struct AlignmentHeadConfig: Sendable {
   /// Layer-head pairs to extract attention from, e.g. [(4, 13), (3, 13), (5, 11)]
   public let heads: [(layer: Int, head: Int)]
 
+  /// Sample interval for sparse attention extraction (1 = every token, 4 = every 4th token)
+  /// Higher values reduce latency but may reduce alignment accuracy
+  public let sampleInterval: Int
+
   /// Get unique layers that need attention extraction
   public var layers: Set<Int> {
     Set(heads.map(\.layer))
@@ -421,16 +425,23 @@ public struct AlignmentHeadConfig: Sendable {
 
   /// Default alignment heads discovered for Chatterbox Turbo GPT-2
   /// Based on empirical testing with diagonal/monotonic scoring
+  /// Uses sparse sampling (every 4th token) for reduced latency
   public static let chatterboxTurbo = AlignmentHeadConfig(heads: [
     (4, 13), // highest combined score
     (3, 13), // second highest
     (5, 11), // third
     (6, 7), // fourth
     (2, 9), // fifth
-  ])
+  ], sampleInterval: 4)
 
-  public init(heads: [(layer: Int, head: Int)]) {
+  /// Full sampling config (no interpolation) - use for maximum accuracy
+  public static let chatterboxTurboFull = AlignmentHeadConfig(heads: [
+    (4, 13), (3, 13), (5, 11), (6, 7), (2, 9)
+  ], sampleInterval: 1)
+
+  public init(heads: [(layer: Int, head: Int)], sampleInterval: Int = 4) {
     self.heads = heads
+    self.sampleInterval = max(1, sampleInterval)  // Minimum 1 (sample every token)
   }
 }
 
@@ -488,13 +499,17 @@ private final class T3TurboStreamState: @unchecked Sendable {
   var chunkTokens: [Int32] = []
   var stepCount = 0
 
-  // Optimized attention accumulation: pre-extracted Float arrays per speech token
-  // Each entry is averaged attention over text tokens for one speech position
-  var accumulatedTextAttention: [[Float]] = []
+  // Sparse attention sampling: store (speechTokenIndex, attention) pairs
+  // Only sample every N tokens based on alignmentConfig.sampleInterval
+  var sparseSamples: [(index: Int, attention: [Float])] = []
+  var totalSpeechTokens: Int = 0
 
   // Text token count (for building alignment matrix)
   var textTokenCount: Int = 0
   var conditioningLength: Int = 0
+
+  // Sparse sampling interval (cached from config)
+  var sampleInterval: Int { alignmentConfig?.sampleInterval ?? 1 }
 
   // Helper to extract and average text attention from MLXArray attentions
   private func extractTextAttention(from attentions: [Int: MLXArray]) -> [Float] {
@@ -587,8 +602,8 @@ private final class T3TurboStreamState: @unchecked Sendable {
         cache: cache,
         outputAttentionsForLayers: alignmentLayers
       )
-      // Extract and convert attention for the first speech token immediately
-      // This releases GPU memory right away instead of holding MLXArrays
+      // Extract and convert attention for the first speech token (position 0)
+      // Always sample the first token regardless of interval
       if !modelOutput.attentions.isEmpty {
         var lastPosAttention: [Int: MLXArray] = [:]
         for (layer, attn) in modelOutput.attentions {
@@ -598,9 +613,10 @@ private final class T3TurboStreamState: @unchecked Sendable {
         }
         let textAttn = extractTextAttention(from: lastPosAttention)
         if !textAttn.isEmpty {
-          accumulatedTextAttention.append(textAttn)
+          sparseSamples.append((index: 0, attention: textAttn))
         }
       }
+      totalSpeechTokens = 1
     } else {
       modelOutput = GPT2ModelOutput(
         hiddenStates: model.tfmr(inputsEmbeds: embeds, cache: cache),
@@ -627,8 +643,10 @@ private final class T3TurboStreamState: @unchecked Sendable {
     // Pre-allocate arrays to avoid reallocations
     generatedIds.reserveCapacity(maxGenLen + 1)
     chunkTokens.reserveCapacity(chunkSize + 1)
-    if alignmentConfig != nil {
-      accumulatedTextAttention.reserveCapacity(maxGenLen + 1)
+    if let config = alignmentConfig {
+      // Reserve capacity for sparse samples (reduced by sample interval)
+      let estimatedSamples = (maxGenLen / config.sampleInterval) + 2
+      sparseSamples.reserveCapacity(estimatedSamples)
     }
 
     if let c = cache { asyncEval(nextSpeechToken, c) } else { asyncEval(nextSpeechToken) }
@@ -661,9 +679,11 @@ private final class T3TurboStreamState: @unchecked Sendable {
       // Get embedding for current token
       let currentSpeechEmbed = model.speechEmb(token)
 
-      // Forward pass with cache - with attention if configured
+      // Forward pass with cache - with attention if configured (sparse sampling)
       let hiddenStates: MLXArray
-      if !alignmentLayers.isEmpty {
+      let shouldSampleAttention = !alignmentLayers.isEmpty && (totalSpeechTokens % sampleInterval == 0)
+
+      if shouldSampleAttention {
         let modelOutput = model.tfmr.forward(
           inputsEmbeds: currentSpeechEmbed,
           cache: cache,
@@ -671,16 +691,20 @@ private final class T3TurboStreamState: @unchecked Sendable {
         )
         hiddenStates = modelOutput.hiddenStates
 
-        // Extract and convert attention immediately to release GPU memory
+        // Extract and store sparse attention sample
         if !modelOutput.attentions.isEmpty {
           let textAttn = extractTextAttention(from: modelOutput.attentions)
           if !textAttn.isEmpty {
-            accumulatedTextAttention.append(textAttn)
+            sparseSamples.append((index: totalSpeechTokens, attention: textAttn))
           }
         }
       } else {
+        // Skip attention extraction for non-sampled positions
         hiddenStates = model.tfmr(inputsEmbeds: currentSpeechEmbed, cache: cache)
       }
+
+      // Track total speech tokens for sparse sampling
+      totalSpeechTokens += 1
 
       // Get logits
       let speechLogits = model.speechHead(hiddenStates)
@@ -732,12 +756,19 @@ private final class T3TurboStreamState: @unchecked Sendable {
     return nil
   }
 
-  /// Get accumulated attention data for alignment (already extracted as Float arrays)
+  /// Get accumulated attention data for alignment (interpolated from sparse samples)
   func getAlignmentData() -> AlignmentData {
-    AlignmentData(
-      textAttention: accumulatedTextAttention,
+    // Interpolate sparse samples to full attention matrix
+    let fullAttention = SparseAttentionInterpolator.interpolate(
+      sparseSamples: sparseSamples,
+      totalSpeechTokens: totalSpeechTokens,
+      textTokenCount: textTokenCount
+    )
+
+    return AlignmentData(
+      textAttention: fullAttention,
       textTokenCount: textTokenCount,
-      speechTokenCount: accumulatedTextAttention.count,
+      speechTokenCount: totalSpeechTokens,
       conditioningLength: conditioningLength,
       config: alignmentConfig
     )
