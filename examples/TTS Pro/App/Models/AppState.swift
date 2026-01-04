@@ -227,12 +227,10 @@ final class AppState {
     statusMessage = "Generating..."
 
     do {
-      // Use true streaming - audio plays as chunks arrive
-      // Use attention-based alignment for accurate word timings
+      // Use true streaming - audio plays as chunks arrive with attention-based alignment
       let timingsResult = try await engineManager.chatterboxTurboEngine.sayStreamingWithTimings(
         inputText,
         referenceAudio: chatterboxTurboReferenceAudio,
-        useAttentionAlignment: true,
         onTimingsUpdate: { [weak self] timings in
           // Update word timings incrementally as chunks arrive
           self?.wordTimings = timings

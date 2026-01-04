@@ -1,7 +1,4 @@
-// Copyright © Anthony DePasquale
-
-// Test comparing TokenBasedAligner (heuristic) vs AttentionBasedAligner (attention-based)
-// to validate attention-based alignment improves word timing accuracy
+// Test attention-based alignment for accurate word timing
 
 import AVFoundation
 import Foundation
@@ -126,9 +123,9 @@ struct AlignmentAccuracyTests {
     return (MLXArray(samples), Int(file.fileFormat.sampleRate))
   }
 
-  /// Main accuracy test comparing TokenBasedAligner vs AttentionBasedAligner
-  @Test @MainActor func compareAlignerAccuracy() async throws {
-    print("=== Alignment Accuracy Comparison Test ===\n")
+  /// Main accuracy test for attention-based alignment
+  @Test @MainActor func testAttentionBasedAlignment() async throws {
+    print("=== Attention-Based Alignment Test ===\n")
 
     // Test sentences with varying complexity
     let testSentences = [
@@ -136,6 +133,8 @@ struct AlignmentAccuracyTests {
       "The quick brown fox jumps over the lazy dog.",
       "She sells seashells by the seashore.",
       "How much wood would a woodchuck chuck if a woodchuck could chuck wood?",
+      // Stress test: names, brands, medical terms, special characters
+      "Saoirse Ronan and Timothée Chalamet starred in that new Netflix series. Dr. Wojciechowski prescribed Xarelto for my atrial fibrillation condition. Can you order the Oculus Quest from Amazon or should we get the PlayStation VR? I took two Advil and one Zyrtec, then ate at Chipotle with Siobhan. I bought a MacBook Pro and AirPods Max at the Apple Store in Schaumburg. Xavier ordered Postmates delivery of Häagen-Dazs and watched Disney Plus. Dr. Patel consulted with Dr. Okonkwo regarding the patient's acute cholecystitis and recommended initiating IV ceftriaxone 2 grams daily, along with ketorolac for pain management, while scheduling a laparoscopic cholecystectomy with Dr. Ramirez-Santos in the morning.",
     ]
 
     // Setup
@@ -152,20 +151,19 @@ struct AlignmentAccuracyTests {
     // Create output directory
     try FileManager.default.createDirectory(at: Self.outputDir, withIntermediateDirectories: true)
 
-    var report = "Alignment Accuracy Comparison Report\n"
+    var report = "Attention-Based Alignment Report\n"
     report += "=" * 60 + "\n\n"
 
-    var tokenBasedMetricsAll: [AlignmentMetrics] = []
-    var attentionBasedMetricsAll: [AlignmentMetrics] = []
+    var metricsAll: [AlignmentMetrics] = []
 
     for (i, sentence) in testSentences.enumerated() {
-      print("\n--- Test \(i + 1): \"\(sentence)\" ---")
+      print("\n--- Test \(i + 1): \"\(sentence.prefix(60))...\" ---")
       report += "Test \(i + 1): \"\(sentence)\"\n"
       report += "-" * 50 + "\n"
 
       // Generate with attention-based alignment
       print("  Generating with attention-based alignment...")
-      let attentionStart = CFAbsoluteTimeGetCurrent()
+      let startTime = CFAbsoluteTimeGetCurrent()
       guard let result = await model.generateWithAlignment(
         text: sentence,
         conds: conditionals
@@ -173,7 +171,7 @@ struct AlignmentAccuracyTests {
         print("  ERROR: Attention-based generation failed")
         continue
       }
-      let attentionTime = CFAbsoluteTimeGetCurrent() - attentionStart
+      let generationTime = CFAbsoluteTimeGetCurrent() - startTime
 
       // Convert to samples
       result.audio.eval()
@@ -181,57 +179,32 @@ struct AlignmentAccuracyTests {
       let sampleRate = 24000 // ChatterboxTurboS3GenSr
 
       // Create attention-based aligner
-      let attentionAligner = AttentionBasedAligner(
+      let aligner = AttentionBasedAligner(
         alignmentData: result.alignmentData,
         textTokens: result.textTokens,
         tokenTexts: result.tokenTexts
       )
-      let attentionTimings = attentionAligner.align(
+      let timings = aligner.align(
         text: sentence,
         audioSamples: samples,
         sampleRate: sampleRate
       )
-      print("  Attention-based: \(attentionTimings.count) words, \(String(format: "%.2f", attentionTime))s")
-
-      // Generate with token-based alignment (using same audio to isolate aligner comparison)
-      print("  Generating with token-based alignment...")
-      let tokenStart = CFAbsoluteTimeGetCurrent()
-      let tokenAligner = TokenBasedAligner()
-      let tokenTimings = tokenAligner.align(
-        text: sentence,
-        audioSamples: samples,
-        sampleRate: sampleRate
-      )
-      let tokenTime = CFAbsoluteTimeGetCurrent() - tokenStart
-      print("  Token-based: \(tokenTimings.count) words, \(String(format: "%.4f", tokenTime))s")
+      print("  Words: \(timings.count), Generation time: \(String(format: "%.2f", generationTime))s")
 
       // Calculate metrics
       let totalDuration = Double(samples.count) / Double(sampleRate)
-      let tokenMetrics = AlignmentMetrics.calculate(from: tokenTimings, totalDuration: totalDuration)
-      let attentionMetrics = AlignmentMetrics.calculate(from: attentionTimings, totalDuration: totalDuration)
+      let metrics = AlignmentMetrics.calculate(from: timings, totalDuration: totalDuration)
+      metricsAll.append(metrics)
 
-      tokenBasedMetricsAll.append(tokenMetrics)
-      attentionBasedMetricsAll.append(attentionMetrics)
+      print("  Metrics: \(metrics)")
+      report += "\nMetrics:\n  \(metrics)\n"
 
-      print("\n  Token-based metrics:")
-      print("    \(tokenMetrics)")
-      print("\n  Attention-based metrics:")
-      print("    \(attentionMetrics)")
-
-      report += "\nToken-based:\n  \(tokenMetrics)\n"
-      report += "\nAttention-based:\n  \(attentionMetrics)\n"
-
-      // Detailed timing comparison
-      report += "\nWord-by-word comparison:\n"
-      let minCount = min(tokenTimings.count, attentionTimings.count)
-      for j in 0..<minCount {
-        let token = tokenTimings[j]
-        let attn = attentionTimings[j]
-        let tokenDur = (token.end - token.start) * 1000
-        let attnDur = (attn.end - attn.start) * 1000
-        let diff = abs(tokenDur - attnDur)
-        let paddedWord = token.word.padding(toLength: 15, withPad: " ", startingAt: 0)
-        report += "  \(paddedWord): token=\(String(format: "%6.0f", tokenDur))ms, attn=\(String(format: "%6.0f", attnDur))ms, diff=\(String(format: "%5.0f", diff))ms\n"
+      // Word timings detail
+      report += "\nWord timings:\n"
+      for timing in timings {
+        let dur = (timing.end - timing.start) * 1000
+        let paddedWord = timing.word.padding(toLength: 20, withPad: " ", startingAt: 0)
+        report += "  \(paddedWord): \(String(format: "%.0f", timing.start * 1000))ms - \(String(format: "%.0f", timing.end * 1000))ms (\(String(format: "%.0f", dur))ms)\n"
       }
       report += "\n"
 
@@ -247,39 +220,19 @@ struct AlignmentAccuracyTests {
     report += "SUMMARY\n"
     report += "=" * 60 + "\n\n"
 
-    let avgTokenMonotonic = tokenBasedMetricsAll.map { $0.monotonicityPercent }.reduce(0, +) / Float(tokenBasedMetricsAll.count)
-    let avgAttnMonotonic = attentionBasedMetricsAll.map { $0.monotonicityPercent }.reduce(0, +) / Float(attentionBasedMetricsAll.count)
+    let avgMonotonic = metricsAll.map { $0.monotonicityPercent }.reduce(0, +) / Float(metricsAll.count)
+    let avgVariance = metricsAll.map { $0.durationVariance }.reduce(0, +) / Float(metricsAll.count)
+    let avgCoverage = metricsAll.map { $0.gapPercent }.reduce(0, +) / Float(metricsAll.count)
 
-    let avgTokenVariance = tokenBasedMetricsAll.map { $0.durationVariance }.reduce(0, +) / Float(tokenBasedMetricsAll.count)
-    let avgAttnVariance = attentionBasedMetricsAll.map { $0.durationVariance }.reduce(0, +) / Float(attentionBasedMetricsAll.count)
-
-    let avgTokenCoverage = tokenBasedMetricsAll.map { $0.gapPercent }.reduce(0, +) / Float(tokenBasedMetricsAll.count)
-    let avgAttnCoverage = attentionBasedMetricsAll.map { $0.gapPercent }.reduce(0, +) / Float(attentionBasedMetricsAll.count)
-
-    print("Token-based averages:")
-    print("  Monotonicity: \(String(format: "%.1f", avgTokenMonotonic))%")
-    print("  Duration variance: \(String(format: "%.2f", avgTokenVariance))")
-    print("  Gap coverage: \(String(format: "%.1f", avgTokenCoverage))%")
-
-    print("\nAttention-based averages:")
-    print("  Monotonicity: \(String(format: "%.1f", avgAttnMonotonic))%")
-    print("  Duration variance: \(String(format: "%.2f", avgAttnVariance))")
-    print("  Gap coverage: \(String(format: "%.1f", avgAttnCoverage))%")
-
-    report += "Token-based averages:\n"
-    report += "  Monotonicity: \(String(format: "%.1f", avgTokenMonotonic))%\n"
-    report += "  Duration variance: \(String(format: "%.2f", avgTokenVariance))\n"
-    report += "  Gap coverage: \(String(format: "%.1f", avgTokenCoverage))%\n\n"
+    print("Attention-based averages:")
+    print("  Monotonicity: \(String(format: "%.1f", avgMonotonic))%")
+    print("  Duration variance: \(String(format: "%.2f", avgVariance))")
+    print("  Gap coverage: \(String(format: "%.1f", avgCoverage))%")
 
     report += "Attention-based averages:\n"
-    report += "  Monotonicity: \(String(format: "%.1f", avgAttnMonotonic))%\n"
-    report += "  Duration variance: \(String(format: "%.2f", avgAttnVariance))\n"
-    report += "  Gap coverage: \(String(format: "%.1f", avgAttnCoverage))%\n"
-
-    // Key insight: lower variance + better gap coverage = more accurate alignment
-    let varianceImprovement = (avgTokenVariance - avgAttnVariance) / avgTokenVariance * 100
-    print("\nVariance improvement: \(String(format: "%.1f", varianceImprovement))%")
-    report += "\nVariance improvement: \(String(format: "%.1f", varianceImprovement))%\n"
+    report += "  Monotonicity: \(String(format: "%.1f", avgMonotonic))%\n"
+    report += "  Duration variance: \(String(format: "%.2f", avgVariance))\n"
+    report += "  Gap coverage: \(String(format: "%.1f", avgCoverage))%\n"
 
     // Save report
     let reportURL = Self.outputDir.appendingPathComponent("accuracy_report.txt")
@@ -287,11 +240,8 @@ struct AlignmentAccuracyTests {
     print("\nFull report saved to: \(reportURL.path)")
 
     // Assertions
-    #expect(avgAttnMonotonic >= 95.0, "Attention-based alignment should have high monotonicity")
-    #expect(avgTokenMonotonic >= 95.0, "Token-based alignment should have high monotonicity")
-
-    // Attention-based should have more varied (realistic) durations, not artificially uniform
-    // We expect both to work, but attention-based to be more accurate
+    #expect(avgMonotonic >= 95.0, "Attention-based alignment should have high monotonicity")
+    #expect(avgCoverage >= 95.0, "Attention-based alignment should have high gap coverage")
 
     print("\n=== Test Complete ===")
   }

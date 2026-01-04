@@ -51,16 +51,15 @@ extension ChatterboxTurboEngine {
   ///
   /// This method generates audio and returns word-level timing information
   /// that can be used to highlight words as they're spoken during playback.
+  /// Uses attention-based alignment for accurate word timing.
   ///
   /// - Parameters:
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
-  ///   - aligner: The forced aligner to use for word timing
   /// - Returns: WordTimingResult containing all word timings and metadata
   public func generateWithTimings(
     _ text: String,
-    referenceAudio: ChatterboxTurboReferenceAudio? = nil,
-    aligner: ForcedAligner? = nil
+    referenceAudio: ChatterboxTurboReferenceAudio? = nil
   ) async throws -> WordTimingResult {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -71,11 +70,10 @@ extension ChatterboxTurboEngine {
     let startTime = Date()
     var timeToFirstAudio: TimeInterval = 0
 
-    // Stream with timings
-    let stream = generateStreamingWithTimings(
+    // Stream with attention-based timings
+    let stream = try await generateStreamingWithAttentionAlignment(
       trimmedText,
-      referenceAudio: referenceAudio,
-      aligner: aligner
+      referenceAudio: referenceAudio
     )
 
     var allTimings: [HighlightedWord] = []
@@ -120,131 +118,44 @@ extension ChatterboxTurboEngine {
     )
   }
 
-  /// Generate audio as a stream with word-level timings.
+  /// Generate audio as a stream with word-level timings using attention-based alignment.
   ///
   /// - Parameters:
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
-  ///   - aligner: The forced aligner to use for word timing
   /// - Returns: An async stream of audio chunks with word timings
   public func generateStreamingWithTimings(
     _ text: String,
-    referenceAudio: ChatterboxTurboReferenceAudio? = nil,
-    aligner: ForcedAligner? = nil
-  ) -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
-    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    guard !trimmedText.isEmpty else {
-      return AsyncThrowingStream { $0.finish(throwing: TTSError.invalidArgument("Text cannot be empty")) }
-    }
-
-    // Capture current parameter values
-    let currentTemperature = temperature
-    let currentTopK = topK
-    let currentTopP = topP
-    let currentRepetitionPenalty = repetitionPenalty
-    let currentMaxNewTokens = maxNewTokens
-    let effectiveAligner = aligner ?? TokenBasedAligner()
-
-    return AsyncThrowingStream { continuation in
-      Task { @MainActor [weak self] in
-        guard let self else {
-          continuation.finish()
-          return
-        }
-
-        do {
-          // Auto-load if needed
-          if !isLoaded {
-            try await load()
-          }
-
-          // Prepare reference audio if needed
-          let ref: ChatterboxTurboReferenceAudio
-          if let referenceAudio {
-            ref = referenceAudio
-          } else {
-            ref = try await prepareDefaultReferenceAudio()
-          }
-
-          // Get stream from model with timings
-          let modelStream = await getChatterboxTurboTTS()?.generateStreamingWithTimings(
-            text: trimmedText,
-            conditionals: ref.conditionals,
-            aligner: effectiveAligner,
-            temperature: currentTemperature,
-            topK: currentTopK,
-            topP: currentTopP,
-            repetitionPenalty: currentRepetitionPenalty,
-            maxNewTokens: currentMaxNewTokens
-          )
-
-          guard let modelStream else {
-            throw TTSError.modelNotLoaded
-          }
-
-          var timeOffset: TimeInterval = 0
-
-          for try await chunk in modelStream {
-            guard !Task.isCancelled else { break }
-
-            // Adjust time offsets for streaming
-            let adjustedTimings = chunk.wordTimings.map { timing in
-              HighlightedWord(
-                word: timing.word,
-                start: timing.start + timeOffset,
-                end: timing.end + timeOffset,
-                charRange: timing.charRange
-              )
-            }
-
-            let adjustedChunk = AudioChunkWithTimings(
-              samples: chunk.samples,
-              sampleRate: chunk.sampleRate,
-              processingTime: chunk.processingTime,
-              wordTimings: adjustedTimings
-            )
-
-            continuation.yield(adjustedChunk)
-            timeOffset += Double(chunk.samples.count) / Double(chunk.sampleRate)
-          }
-
-          continuation.finish()
-        } catch is CancellationError {
-          continuation.finish()
-        } catch {
-          continuation.finish(throwing: error)
-        }
-      }
-    }
+    referenceAudio: ChatterboxTurboReferenceAudio? = nil
+  ) async throws -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
+    // Delegate to attention-based alignment
+    return try await generateStreamingWithAttentionAlignment(text, referenceAudio: referenceAudio)
   }
 
   /// Play audio with streaming and return word timings for highlighting.
   ///
   /// This method plays audio as it's generated and returns the word timings
   /// that can be used to highlight words during playback.
+  /// Uses attention-based alignment for accurate word timing.
   ///
   /// - Parameters:
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
-  ///   - aligner: The forced aligner to use for word timing
   /// - Returns: WordTimingResult containing all word timings and metadata
   @discardableResult
   public func sayWithTimings(
     _ text: String,
-    referenceAudio: ChatterboxTurboReferenceAudio? = nil,
-    aligner: ForcedAligner? = nil
+    referenceAudio: ChatterboxTurboReferenceAudio? = nil
   ) async throws -> WordTimingResult {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
     let startTime = Date()
     var timeToFirstAudio: TimeInterval = 0
 
-    // First, collect all the chunks with timings
-    let stream = generateStreamingWithTimings(
+    // First, collect all the chunks with timings (uses attention-based alignment)
+    let stream = try await generateStreamingWithTimings(
       trimmedText,
-      referenceAudio: referenceAudio,
-      aligner: aligner
+      referenceAudio: referenceAudio
     )
 
     var allTimings: [HighlightedWord] = []
@@ -341,12 +252,11 @@ extension ChatterboxTurboEngine {
   ///
   /// Unlike `sayWithTimings()` which waits for all audio before playing,
   /// this method starts playback immediately when the first chunk is ready,
-  /// reducing perceived latency.
+  /// reducing perceived latency. Uses attention-based alignment for accurate word timing.
   ///
   /// - Parameters:
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
-  ///   - useAttentionAlignment: If true, uses attention-based alignment (~95% accuracy) instead of heuristic (~80%)
   ///   - onTimingsUpdate: Called each time new word timings are available (for incremental UI updates)
   ///   - onFirstAudio: Called when the first audio chunk is ready (for TTFA tracking)
   /// - Returns: WordTimingResult containing all word timings and metadata
@@ -354,7 +264,6 @@ extension ChatterboxTurboEngine {
   public func sayStreamingWithTimings(
     _ text: String,
     referenceAudio: ChatterboxTurboReferenceAudio? = nil,
-    useAttentionAlignment: Bool = false,
     onTimingsUpdate: (([HighlightedWord]) -> Void)? = nil,
     onFirstAudio: ((TimeInterval) -> Void)? = nil
   ) async throws -> WordTimingResult {
@@ -371,13 +280,8 @@ extension ChatterboxTurboEngine {
     // Stop any previous playback before starting new generation
     await playback.stopAudio()
 
-    // Get the streaming chunks with timings
-    let stream: AsyncThrowingStream<AudioChunkWithTimings, Error>
-    if useAttentionAlignment {
-      stream = try await generateStreamingWithAttentionAlignment(trimmedText, referenceAudio: referenceAudio)
-    } else {
-      stream = generateStreamingWithTimings(trimmedText, referenceAudio: referenceAudio, aligner: nil)
-    }
+    // Get the streaming chunks with attention-based timings
+    let stream = try await generateStreamingWithAttentionAlignment(trimmedText, referenceAudio: referenceAudio)
 
     var allTimings: [HighlightedWord] = []
     var allSamples: [Float] = []

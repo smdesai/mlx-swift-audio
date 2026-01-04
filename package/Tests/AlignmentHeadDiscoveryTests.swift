@@ -1,5 +1,3 @@
-// Copyright © Anthony DePasquale
-
 // Test to discover which GPT-2 attention heads contain text-to-speech alignment information
 // Based on the approach from original Chatterbox AlignmentStreamAnalyzer
 
