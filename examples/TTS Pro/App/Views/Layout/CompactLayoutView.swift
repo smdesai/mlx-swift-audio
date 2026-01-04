@@ -443,7 +443,9 @@ private struct SettingsSheet: View {
             .foregroundStyle(.white)
           }
         }
+        #if os(iOS)
         .toolbarBackground(Color(red: 0.06, green: 0.06, blue: 0.08), for: .navigationBar)
+        #endif
     }
     .presentationBackground(Color(red: 0.06, green: 0.06, blue: 0.08))
   }

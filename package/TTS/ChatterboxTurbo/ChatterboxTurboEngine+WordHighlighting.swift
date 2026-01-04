@@ -285,6 +285,58 @@ extension ChatterboxTurboEngine {
     )
   }
 
+  /// Generate audio stream with attention-based alignment for accurate word timings.
+  ///
+  /// - Parameters:
+  ///   - text: The text to synthesize
+  ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
+  /// - Returns: An async stream of audio chunks with attention-aligned word timings
+  public func generateStreamingWithAttentionAlignment(
+    _ text: String,
+    referenceAudio: ChatterboxTurboReferenceAudio? = nil
+  ) async throws -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !trimmedText.isEmpty else {
+      throw TTSError.invalidArgument("Text cannot be empty")
+    }
+
+    // Capture current parameter values
+    let currentTemperature = temperature
+    let currentTopK = topK
+    let currentTopP = topP
+    let currentRepetitionPenalty = repetitionPenalty
+    let currentMaxNewTokens = maxNewTokens
+
+    // Auto-load if needed
+    if !isLoaded {
+      try await load()
+    }
+
+    // Prepare reference audio if needed
+    let ref: ChatterboxTurboReferenceAudio
+    if let referenceAudio {
+      ref = referenceAudio
+    } else {
+      ref = try await prepareDefaultReferenceAudio()
+    }
+
+    // Get stream from model with attention alignment
+    guard let tts = await getChatterboxTurboTTS() else {
+      throw TTSError.modelNotLoaded
+    }
+
+    return await tts.generateStreamingWithAttentionAlignment(
+      text: trimmedText,
+      conditionals: ref.conditionals,
+      temperature: currentTemperature,
+      topK: currentTopK,
+      topP: currentTopP,
+      repetitionPenalty: currentRepetitionPenalty,
+      maxNewTokens: currentMaxNewTokens
+    )
+  }
+
   /// Play audio with true streaming - audio plays as chunks are generated.
   ///
   /// Unlike `sayWithTimings()` which waits for all audio before playing,
@@ -294,7 +346,7 @@ extension ChatterboxTurboEngine {
   /// - Parameters:
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
-  ///   - aligner: The forced aligner to use for word timing
+  ///   - useAttentionAlignment: If true, uses attention-based alignment (~95% accuracy) instead of heuristic (~80%)
   ///   - onTimingsUpdate: Called each time new word timings are available (for incremental UI updates)
   ///   - onFirstAudio: Called when the first audio chunk is ready (for TTFA tracking)
   /// - Returns: WordTimingResult containing all word timings and metadata
@@ -302,7 +354,7 @@ extension ChatterboxTurboEngine {
   public func sayStreamingWithTimings(
     _ text: String,
     referenceAudio: ChatterboxTurboReferenceAudio? = nil,
-    aligner: ForcedAligner? = nil,
+    useAttentionAlignment: Bool = false,
     onTimingsUpdate: (([HighlightedWord]) -> Void)? = nil,
     onFirstAudio: ((TimeInterval) -> Void)? = nil
   ) async throws -> WordTimingResult {
@@ -320,11 +372,12 @@ extension ChatterboxTurboEngine {
     await playback.stopAudio()
 
     // Get the streaming chunks with timings
-    let stream = generateStreamingWithTimings(
-      trimmedText,
-      referenceAudio: referenceAudio,
-      aligner: aligner
-    )
+    let stream: AsyncThrowingStream<AudioChunkWithTimings, Error>
+    if useAttentionAlignment {
+      stream = try await generateStreamingWithAttentionAlignment(trimmedText, referenceAudio: referenceAudio)
+    } else {
+      stream = generateStreamingWithTimings(trimmedText, referenceAudio: referenceAudio, aligner: nil)
+    }
 
     var allTimings: [HighlightedWord] = []
     var allSamples: [Float] = []

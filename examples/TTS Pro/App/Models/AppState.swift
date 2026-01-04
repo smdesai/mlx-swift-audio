@@ -228,9 +228,11 @@ final class AppState {
 
     do {
       // Use true streaming - audio plays as chunks arrive
+      // Use attention-based alignment for accurate word timings
       let timingsResult = try await engineManager.chatterboxTurboEngine.sayStreamingWithTimings(
         inputText,
         referenceAudio: chatterboxTurboReferenceAudio,
+        useAttentionAlignment: true,
         onTimingsUpdate: { [weak self] timings in
           // Update word timings incrementally as chunks arrive
           self?.wordTimings = timings
@@ -277,10 +279,11 @@ final class AppState {
   // MARK: - Highlight Update Timer
 
   /// Start a timer to poll playback position and update highlight index
+  /// Uses ~60fps (16ms) for smooth word transitions that align with audio
   private func startHighlightUpdateTimer(duration: TimeInterval) {
     stopHighlightUpdateTimer()
 
-    highlightUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.033, repeats: true) { [weak self] _ in
+    highlightUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
       Task { @MainActor in
         guard let self = self else { return }
 

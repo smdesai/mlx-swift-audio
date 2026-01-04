@@ -114,11 +114,12 @@ public final class AudioSamplePlayer {
     resetEngineIfNeeded()
 
     // Start tracking on first enqueue
+    // Note: Don't use timer for streaming - callbacks provide accurate position
+    // every 30ms slice, which is more accurate than wall-clock timer
     if !hasStartedPlayback {
       playbackStartTime = Date()
       samplesPlayed = 0
       totalSamplesEnqueued = 0
-      startPlaybackTimer()
     }
 
     totalSamplesEnqueued += samples.count

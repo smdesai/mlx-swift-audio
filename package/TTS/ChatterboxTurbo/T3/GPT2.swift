@@ -67,6 +67,13 @@ func geluNew(_ x: MLXArray) -> MLXArray {
 
 // MARK: - GPT2 Attention
 
+/// Result type for attention with optional weights
+struct GPT2AttentionOutput {
+  let hiddenStates: MLXArray
+  /// Attention weights (B, numHeads, T_query, T_key) - only populated when outputAttentions=true
+  let attentionWeights: MLXArray?
+}
+
 /// GPT2 multi-head attention with combined QKV projection
 class GPT2Attention: Module {
   let config: GPT2Config
@@ -84,11 +91,26 @@ class GPT2Attention: Module {
     _cProj.wrappedValue = Linear(config.nEmbd, config.nEmbd)
   }
 
+  /// Standard forward pass (no attention output)
   func callAsFunction(
     _ hiddenStates: MLXArray,
     attentionMask _: MLXArray? = nil,
     cache: KVCache?
   ) -> MLXArray {
+    forward(hiddenStates, cache: cache, outputAttentions: false).hiddenStates
+  }
+
+  /// Forward pass with optional attention weight output
+  /// - Parameters:
+  ///   - hiddenStates: Input hidden states (B, T, D)
+  ///   - cache: Optional KV cache
+  ///   - outputAttentions: If true, compute and return attention weights (slower)
+  /// - Returns: GPT2AttentionOutput with hidden states and optional attention weights
+  func forward(
+    _ hiddenStates: MLXArray,
+    cache: KVCache?,
+    outputAttentions: Bool
+  ) -> GPT2AttentionOutput {
     let B = hiddenStates.shape[0]
     let T = hiddenStates.shape[1]
 
@@ -109,19 +131,50 @@ class GPT2Attention: Module {
       (k, v) = cache.update(keys: k, values: v)
     }
 
-    // Use optimized scaled dot product attention
-    // .causal for prefill (T > 1), .none for single-token generation
     let L = q.shape[2]
-    let attnOutput = MLXFast.scaledDotProductAttention(
-      queries: q,
-      keys: k,
-      values: v,
-      scale: scale,
-      mask: L > 1 ? .causal : .none
-    ).transposed(0, 2, 1, 3).reshaped([B, T, config.nEmbd])
 
-    // Output projection
-    return cProj(attnOutput)
+    if outputAttentions {
+      // Manual attention to extract weights
+      // Q @ K^T / sqrt(d)
+      var scores = MLX.matmul(q, k.transposed(0, 1, 3, 2)) * scale
+
+      // Apply causal mask for prefill
+      if L > 1 {
+        let S = k.shape[2]
+        // Create causal mask: (1, 1, L, S)
+        let mask = MLX.triu(MLXArray.ones([L, S]), k: S - L + 1)
+        let causalMask = MLX.where(mask .== 1, MLXArray(-Float.infinity), MLXArray(0.0))
+        scores = scores + causalMask
+      }
+
+      // Softmax
+      let attnWeights = softmax(scores, axis: -1)
+
+      // Attention @ Values
+      let attnOutput = MLX.matmul(attnWeights, v)
+        .transposed(0, 2, 1, 3)
+        .reshaped([B, T, config.nEmbd])
+
+      return GPT2AttentionOutput(
+        hiddenStates: cProj(attnOutput),
+        attentionWeights: attnWeights
+      )
+    } else {
+      // Use optimized scaled dot product attention
+      // .causal for prefill (T > 1), .none for single-token generation
+      let attnOutput = MLXFast.scaledDotProductAttention(
+        queries: q,
+        keys: k,
+        values: v,
+        scale: scale,
+        mask: L > 1 ? .causal : .none
+      ).transposed(0, 2, 1, 3).reshaped([B, T, config.nEmbd])
+
+      return GPT2AttentionOutput(
+        hiddenStates: cProj(attnOutput),
+        attentionWeights: nil
+      )
+    }
   }
 }
 
@@ -147,6 +200,12 @@ class GPT2MLP: Module {
 
 // MARK: - GPT2 Block
 
+/// Result type for block with optional attention weights
+struct GPT2BlockOutput {
+  let hiddenStates: MLXArray
+  let attentionWeights: MLXArray?
+}
+
 /// GPT2 transformer block (Pre-LN architecture)
 class GPT2Block: Module {
   @ModuleInfo(key: "ln_1") var ln1: LayerNorm
@@ -161,26 +220,47 @@ class GPT2Block: Module {
     _mlp.wrappedValue = GPT2MLP(config)
   }
 
+  /// Standard forward pass
   func callAsFunction(
     _ hiddenStates: MLXArray,
     attentionMask: MLXArray? = nil,
     cache: KVCache?
   ) -> MLXArray {
+    forward(hiddenStates, cache: cache, outputAttentions: false).hiddenStates
+  }
+
+  /// Forward pass with optional attention output
+  func forward(
+    _ hiddenStates: MLXArray,
+    cache: KVCache?,
+    outputAttentions: Bool
+  ) -> GPT2BlockOutput {
     // Self-attention with residual
     let residual = hiddenStates
     var h = ln1(hiddenStates)
-    h = attn(h, attentionMask: attentionMask, cache: cache)
-    h = residual + h
+    let attnOutput = attn.forward(h, cache: cache, outputAttentions: outputAttentions)
+    h = residual + attnOutput.hiddenStates
 
     // MLP with residual
     let residual2 = h
     h = ln2(h)
     h = mlp(h)
-    return residual2 + h
+
+    return GPT2BlockOutput(
+      hiddenStates: residual2 + h,
+      attentionWeights: attnOutput.attentionWeights
+    )
   }
 }
 
 // MARK: - GPT2 Model
+
+/// Result type for model with optional attention weights
+struct GPT2ModelOutput {
+  let hiddenStates: MLXArray
+  /// Attention weights per layer: [layer_idx: (B, numHeads, T_query, T_key)]
+  let attentions: [Int: MLXArray]
+}
 
 /// GPT2 base model (without LM head)
 class GPT2Model: Module {
@@ -218,6 +298,27 @@ class GPT2Model: Module {
     attentionMask: MLXArray? = nil,
     cache: [KVCache]? = nil
   ) -> MLXArray {
+    forward(
+      inputIds: inputIds,
+      inputsEmbeds: inputsEmbeds,
+      cache: cache,
+      outputAttentionsForLayers: nil
+    ).hiddenStates
+  }
+
+  /// Forward pass with optional attention output from specific layers
+  /// - Parameters:
+  ///   - inputIds: Token IDs (B, T) - optional if inputsEmbeds provided
+  ///   - inputsEmbeds: Pre-computed embeddings (B, T, D) - takes precedence over inputIds
+  ///   - cache: Optional list of KV caches for each layer
+  ///   - outputAttentionsForLayers: Layer indices to extract attention from (nil = no attention output)
+  /// - Returns: GPT2ModelOutput with hidden states and optional attention weights
+  func forward(
+    inputIds: MLXArray? = nil,
+    inputsEmbeds: MLXArray? = nil,
+    cache: [KVCache]? = nil,
+    outputAttentionsForLayers: Set<Int>?
+  ) -> GPT2ModelOutput {
     var hiddenStates: MLXArray
     if let embeds = inputsEmbeds {
       hiddenStates = embeds
@@ -240,17 +341,29 @@ class GPT2Model: Module {
     let positionEmbeds = wpe(positionIds)
     hiddenStates = hiddenStates + positionEmbeds
 
+    // Track attention from requested layers
+    var attentions: [Int: MLXArray] = [:]
+    let extractLayers = outputAttentionsForLayers ?? []
+
     // Forward through transformer blocks
     for (i, block) in h.enumerated() {
-      hiddenStates = block(
+      let needsAttention = extractLayers.contains(i)
+      let blockOutput = block.forward(
         hiddenStates,
-        attentionMask: attentionMask,
-        cache: cache?[i]
+        cache: cache?[i],
+        outputAttentions: needsAttention
       )
+      hiddenStates = blockOutput.hiddenStates
+      if needsAttention, let attnWeights = blockOutput.attentionWeights {
+        attentions[i] = attnWeights
+      }
     }
 
     // Final layer norm
-    return lnF(hiddenStates)
+    return GPT2ModelOutput(
+      hiddenStates: lnF(hiddenStates),
+      attentions: attentions
+    )
   }
 
   /// Create KV caches for all layers

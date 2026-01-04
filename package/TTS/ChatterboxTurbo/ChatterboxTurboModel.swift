@@ -79,7 +79,7 @@ struct ChatterboxTurboConditionals: @unchecked Sendable {
 /// - GPT2-Medium backbone (instead of LLaMA)
 /// - 2-step meanflow CFM (instead of 10-step)
 /// - No CFG, exaggeration, or min_p support
-class ChatterboxTurboModel: Module {
+class ChatterboxTurboModel: Module, @unchecked Sendable {
   /// Base Hugging Face repository name
   private static let baseRepoName = "Chatterbox-Turbo-TTS"
 
@@ -459,6 +459,107 @@ class ChatterboxTurboModel: Module {
       return wav.squeezed(axis: 0)
     }
     return wav
+  }
+
+  /// Generate speech with attention capture for alignment.
+  ///
+  /// This method generates audio and captures attention weights from the T3 model,
+  /// which can be used for accurate word-level alignment.
+  ///
+  /// - Returns: Tuple of (audioSamples, alignmentData, textTokens, tokenTexts)
+  func generateWithAlignment(
+    text: String,
+    conds: ChatterboxTurboConditionals,
+    temperature: Float = 0.8,
+    repetitionPenalty: Float = 1.2,
+    topP: Float = 0.95,
+    topK: Int = 1000,
+    maxNewTokens: Int = 1000
+  ) async -> (audio: MLXArray, alignmentData: AlignmentData, textTokens: [Int], tokenTexts: [String])? {
+    var conditionals = conds
+
+    // Normalize text
+    let normalizedText = puncNorm(text)
+
+    // Tokenize text
+    guard let tokenizer = textTokenizer else {
+      return nil
+    }
+    let tokenIds = tokenizer.encode(text: normalizedText, addSpecialTokens: false)
+    let textTokens = MLXArray(tokenIds.map { Int32($0) }).reshaped([1, -1])
+
+    // Decode each token back to text for word boundary detection
+    let tokenTexts = tokenIds.map { tokenizer.decode(tokens: [$0]) }
+
+    // Collect speech tokens and alignment data using actor for thread-safety
+    actor AlignmentCapture {
+      var data: AlignmentData?
+      func set(_ alignData: AlignmentData) {
+        data = alignData
+      }
+      func get() -> AlignmentData? {
+        data
+      }
+    }
+
+    let alignmentCapture = AlignmentCapture()
+    var allSpeechTokens: [Int32] = []
+
+    let stream = t3.inferenceTurboStreamWithAttention(
+      t3Cond: &conditionals.t3,
+      textTokens: textTokens,
+      temperature: temperature,
+      topK: topK,
+      topP: topP,
+      repetitionPenalty: repetitionPenalty,
+      maxGenLen: maxNewTokens,
+      chunkSize: 40, // Match default chunk size
+      alignmentConfig: .chatterboxTurbo,
+      onComplete: { alignData in
+        Task {
+          await alignmentCapture.set(alignData)
+        }
+      }
+    )
+
+    do {
+      for try await (chunk, _) in stream {
+        let tokens = chunk.flattened().asArray(Int32.self)
+        allSpeechTokens.append(contentsOf: tokens)
+      }
+    } catch {
+      return nil
+    }
+
+    guard let alignmentData = await alignmentCapture.get() else {
+      return nil
+    }
+
+    // Filter valid tokens
+    var filteredTokens = MLXArray(allSpeechTokens)
+    let mask = filteredTokens .< ChatterboxTurboSpeechVocabSize
+    let maskValues = mask.asArray(Bool.self)
+    let validIndices = maskValues.enumerated().compactMap { $0.element ? Int32($0.offset) : nil }
+    if !validIndices.isEmpty {
+      filteredTokens = filteredTokens[MLXArray(validIndices)]
+    }
+
+    // Add silence tokens
+    let silence = MLXArray([Int32(ChatterboxTurboS3GenSil), Int32(ChatterboxTurboS3GenSil), Int32(ChatterboxTurboS3GenSil)])
+    filteredTokens = MLX.concatenated([filteredTokens, silence], axis: 0)
+    filteredTokens = filteredTokens.expandedDimensions(axis: 0)
+
+    // Generate waveform
+    let (wav, _) = s3gen.inference(
+      speechTokens: filteredTokens,
+      refDict: conditionals.gen,
+      nCfmTimesteps: 2
+    )
+
+    // Flatten to 1D
+    let audioOut = wav.ndim == 2 ? wav.squeezed(axis: 0) : wav
+
+    return (audioOut, alignmentData, tokenIds, tokenTexts)
   }
 }
 

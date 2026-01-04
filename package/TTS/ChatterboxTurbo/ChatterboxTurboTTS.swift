@@ -282,6 +282,163 @@ actor ChatterboxTurboTTS {
     }
   }
 
+  /// Generate audio with attention-based word timings.
+  ///
+  /// This method uses the model's attention weights to determine word boundaries,
+  /// providing more accurate timing than heuristic-based alignment.
+  ///
+  /// - Parameters:
+  ///   - text: Text to synthesize (should be a single chunk, not split)
+  ///   - conditionals: Pre-computed reference audio conditionals
+  ///   - temperature: Sampling temperature
+  ///   - topK: Top-k sampling value
+  ///   - topP: Top-p sampling threshold
+  ///   - repetitionPenalty: Penalty for repeated tokens
+  ///   - maxNewTokens: Maximum tokens to generate
+  /// - Returns: Audio chunk with attention-based word timings
+  func generateWithAttentionAlignment(
+    text: String,
+    conditionals: ChatterboxTurboConditionals,
+    temperature: Float = 0.8,
+    topK: Int = 1000,
+    topP: Float = 0.95,
+    repetitionPenalty: Float = 1.2,
+    maxNewTokens: Int = 800
+  ) async -> AudioChunkWithTimings? {
+    let startTime = CFAbsoluteTimeGetCurrent()
+
+    // Generate with alignment data capture
+    guard let result = await model.generateWithAlignment(
+      text: text,
+      conds: conditionals,
+      temperature: temperature,
+      repetitionPenalty: repetitionPenalty,
+      topP: topP,
+      topK: topK,
+      maxNewTokens: maxNewTokens
+    ) else {
+      return nil
+    }
+
+    result.audio.eval()
+    let samples = result.audio.asArray(Float.self)
+    MLXMemory.clearCache()
+
+    // Create attention-based aligner with captured data
+    let aligner = AttentionBasedAligner(
+      alignmentData: result.alignmentData,
+      textTokens: result.textTokens,
+      tokenTexts: result.tokenTexts
+    )
+
+    // Run alignment
+    let wordTimings = aligner.align(
+      text: text,
+      audioSamples: samples,
+      sampleRate: ChatterboxTurboS3GenSr
+    )
+
+    let processingTime = CFAbsoluteTimeGetCurrent() - startTime
+
+    return AudioChunkWithTimings(
+      samples: samples,
+      sampleRate: ChatterboxTurboS3GenSr,
+      processingTime: processingTime,
+      wordTimings: wordTimings
+    )
+  }
+
+  /// Generate audio stream with attention-based word timings.
+  ///
+  /// Each chunk in the stream uses attention-based alignment for more accurate timing.
+  ///
+  /// - Note: This method processes chunks sequentially to capture attention per-chunk.
+  ///   For true streaming, use `generateStreamingWithTimings` with a `TokenBasedAligner`.
+  func generateStreamingWithAttentionAlignment(
+    text: String,
+    conditionals: ChatterboxTurboConditionals,
+    temperature: Float = 0.8,
+    topK: Int = 1000,
+    topP: Float = 0.95,
+    repetitionPenalty: Float = 1.2,
+    maxNewTokens: Int = 800
+  ) -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
+    let chunks = splitTextForGeneration(text)
+
+    // Pre-calculate chunk offsets in the original text
+    var chunkOffsets: [String.Index] = []
+    var searchStart = text.startIndex
+    for chunk in chunks {
+      let searchRange = searchStart ..< text.endIndex
+      if let range = text.range(of: chunk, range: searchRange) {
+        chunkOffsets.append(range.lowerBound)
+        searchStart = range.upperBound
+      } else {
+        chunkOffsets.append(searchStart)
+      }
+    }
+
+    return AsyncThrowingStream { continuation in
+      Task {
+        var timeOffset: TimeInterval = 0
+
+        for (i, chunkText) in chunks.enumerated() {
+          do {
+            try Task.checkCancellation()
+          } catch {
+            continuation.finish(throwing: error)
+            return
+          }
+
+          // Generate with attention alignment
+          guard let chunk = await self.generateWithAttentionAlignment(
+            text: chunkText,
+            conditionals: conditionals,
+            temperature: temperature,
+            topK: topK,
+            topP: topP,
+            repetitionPenalty: repetitionPenalty,
+            maxNewTokens: maxNewTokens
+          ) else {
+            continuation.finish(throwing: TTSError.invalidArgument("Attention-based alignment failed"))
+            return
+          }
+
+          // Adjust timings for stream position and map charRanges to full text
+          let baseOffset = chunkOffsets[i]
+          let adjustedTimings = chunk.wordTimings.map { timing in
+            // Offset charRange to full text
+            let charOffset = text.distance(from: text.startIndex, to: baseOffset)
+            let startOffset = chunkText.distance(from: chunkText.startIndex, to: timing.charRange.lowerBound)
+            let endOffset = chunkText.distance(from: chunkText.startIndex, to: timing.charRange.upperBound)
+
+            let adjustedStart = text.index(text.startIndex, offsetBy: charOffset + startOffset, limitedBy: text.endIndex) ?? text.endIndex
+            let adjustedEnd = text.index(text.startIndex, offsetBy: charOffset + endOffset, limitedBy: text.endIndex) ?? text.endIndex
+
+            return HighlightedWord(
+              word: timing.word,
+              start: timing.start + timeOffset,
+              end: timing.end + timeOffset,
+              charRange: adjustedStart ..< adjustedEnd
+            )
+          }
+
+          let adjustedChunk = AudioChunkWithTimings(
+            samples: chunk.samples,
+            sampleRate: chunk.sampleRate,
+            processingTime: chunk.processingTime,
+            wordTimings: adjustedTimings
+          )
+
+          continuation.yield(adjustedChunk)
+          timeOffset += Double(chunk.samples.count) / Double(chunk.sampleRate)
+        }
+
+        continuation.finish()
+      }
+    }
+  }
+
   // MARK: - Private Methods
 
   /// Split text into chunks suitable for generation.
