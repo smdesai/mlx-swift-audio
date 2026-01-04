@@ -113,11 +113,8 @@ public final class AudioSamplePlayer {
 
     resetEngineIfNeeded()
 
-    // Start tracking on first enqueue
-    // Note: Don't use timer for streaming - callbacks provide accurate position
-    // every 30ms slice, which is more accurate than wall-clock timer
+    // Initialize tracking on first enqueue (timer starts when playback actually begins)
     if !hasStartedPlayback {
-      playbackStartTime = Date()
       samplesPlayed = 0
       totalSamplesEnqueued = 0
     }
@@ -147,8 +144,8 @@ public final class AudioSamplePlayer {
           samplesPlayed += decrementAmount
           queuedSampleCount = max(0, queuedSampleCount - decrementAmount)
 
-          // Update playback position
-          playbackPosition = Double(samplesPlayed) / Double(sampleRate)
+          // Note: playbackPosition is updated by timer using wall-clock time for accuracy
+          // Callbacks are only used for tracking queue drain (playback completion)
 
           // When queue drains, mark playback complete and resume all waiting continuations
           if queuedSampleCount == 0, hasStartedPlayback {
@@ -169,6 +166,10 @@ public final class AudioSamplePlayer {
           playerNode.play()
           hasStartedPlayback = true
           isPlaying = true
+          playbackStartTime = Date()
+
+          // Start wall-clock timer for accurate position tracking
+          startPlaybackTimer()
 
           // Retry if playback didn't start
           if !playerNode.isPlaying {
