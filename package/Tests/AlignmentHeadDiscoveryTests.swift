@@ -13,14 +13,14 @@ import Testing
 // MARK: - Alignment Analysis
 
 /// Analyzes attention patterns to find alignment heads
-struct AlignmentAnalyzer {
+enum AlignmentAnalyzer {
   /// Score for a single attention head indicating how well it tracks text-speech alignment
   struct HeadScore: CustomStringConvertible {
     let layer: Int
     let head: Int
-    let diagonalScore: Float      // How diagonal is the attention pattern
-    let monotonicScore: Float     // How monotonic is the text position tracking
-    let combinedScore: Float      // Overall alignment quality
+    let diagonalScore: Float // How diagonal is the attention pattern
+    let monotonicScore: Float // How monotonic is the text position tracking
+    let combinedScore: Float // Overall alignment quality
 
     var description: String {
       String(format: "Layer %2d Head %2d: diagonal=%.3f monotonic=%.3f combined=%.3f",
@@ -40,11 +40,11 @@ struct AlignmentAnalyzer {
     condLength: Int
   ) -> [HeadScore] {
     let numHeads = attention.shape[1]
-    let layer = 0  // Will be set by caller
+    let layer = 0 // Will be set by caller
 
     var scores: [HeadScore] = []
 
-    for head in 0..<numHeads {
+    for head in 0 ..< numHeads {
       // Extract attention for this head: (T_speech, T_total)
       let headAttn = attention[0, head]
       eval(headAttn)
@@ -54,7 +54,7 @@ struct AlignmentAnalyzer {
       let textEnd = condLength + numTextTokens
 
       // Get attention to text tokens: (T_speech, T_text)
-      let textAttn = headAttn[0..., textStart..<textEnd]
+      let textAttn = headAttn[0..., textStart ..< textEnd]
       eval(textAttn)
 
       // Compute diagonal score: how much does each speech position attend to corresponding text position?
@@ -89,7 +89,7 @@ struct AlignmentAnalyzer {
     var totalScore: Float = 0
     let attnArray = attn.asArray(Float.self)
 
-    for speechPos in 0..<numSpeechTokens {
+    for speechPos in 0 ..< numSpeechTokens {
       let expectedTextPos = Int((Float(speechPos) / Float(numSpeechTokens)) * Float(numTextTokens))
       let clampedPos = min(max(expectedTextPos, 0), numTextTokens - 1)
 
@@ -117,7 +117,7 @@ struct AlignmentAnalyzer {
     var forwardTransitions = 0
     var totalTransitions = 0
 
-    for i in 1..<positions.count {
+    for i in 1 ..< positions.count {
       let prev = positions[i - 1]
       let curr = positions[i]
       if curr >= prev {
@@ -158,7 +158,7 @@ struct AlignmentHeadDiscoveryTests {
 
     let frameCount = Int(buffer.frameLength)
     var samples = [Float](repeating: 0, count: frameCount)
-    for i in 0..<frameCount {
+    for i in 0 ..< frameCount {
       samples[i] = floatData[0][i]
     }
 
@@ -282,7 +282,7 @@ struct AlignmentHeadDiscoveryTests {
     let cache = t3.tfmr.newCache()
 
     // All layers to analyze (GPT-2 Medium has 24 layers)
-    let allLayers = Set(0..<24)
+    let allLayers = Set(0 ..< 24)
 
     // Initial forward pass with attention from all layers
     print("  Running initial prefill with attention extraction...")
@@ -298,7 +298,7 @@ struct AlignmentHeadDiscoveryTests {
 
     // Generate a few more tokens to build up attention patterns
     print("  Generating tokens to build attention patterns...")
-    let maxTokens = 50  // Generate enough for pattern analysis
+    let maxTokens = 50 // Generate enough for pattern analysis
     var currentToken = MLXArray.full([B, 1], values: MLXArray(Int32(config.startSpeechToken)))
     var generatedCount = 0
 
@@ -314,11 +314,11 @@ struct AlignmentHeadDiscoveryTests {
     }
 
     // Get speech head for sampling
-    let speechHidden = output.hiddenStates[0..., (output.hiddenStates.shape[1] - 1)..<output.hiddenStates.shape[1], 0...]
+    let speechHidden = output.hiddenStates[0..., (output.hiddenStates.shape[1] - 1) ..< output.hiddenStates.shape[1], 0...]
     var speechLogits = t3.speechHead(speechHidden)
     currentToken = MLX.argMax(speechLogits[0..., -1, 0...], axis: -1).expandedDimensions(axis: 0)
 
-    for step in 0..<maxTokens {
+    for step in 0 ..< maxTokens {
       // Get embedding for current token
       let currentEmbed = t3.speechEmb(currentToken)
 
@@ -359,7 +359,7 @@ struct AlignmentHeadDiscoveryTests {
     // Analyze accumulated attention for each layer
     print("\nStep 5: Analyzing attention patterns...")
 
-    for layer in 0..<24 {
+    for layer in 0 ..< 24 {
       guard let layerAttentions = accumulatedAttention[layer], !layerAttentions.isEmpty else {
         continue
       }
@@ -367,7 +367,7 @@ struct AlignmentHeadDiscoveryTests {
       // Use the last attention matrix (has full context)
       // Shape: (B, numHeads, 1, T_total) for single-token generation steps
       // We need to build the full attention matrix or use the prefill attention
-      let prefillAttn = layerAttentions[0]  // (B, numHeads, T_prefill, T_prefill)
+      let prefillAttn = layerAttentions[0] // (B, numHeads, T_prefill, T_prefill)
 
       // Analyze this layer's attention
       let layerScores = AlignmentAnalyzer.analyzeAttention(

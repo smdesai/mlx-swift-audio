@@ -129,25 +129,25 @@ struct ReferenceAudioPicker: View {
 
   private func handleFileSelection(_ result: Result<[URL], Error>) {
     switch result {
-    case let .success(urls):
-      guard let url = urls.first else { return }
-      guard url.startAccessingSecurityScopedResource() else {
-        errorMessage = "Permission denied"
-        return
-      }
-      Task {
-        defer { url.stopAccessingSecurityScopedResource() }
-        isLoading = true
-        errorMessage = nil
-        do {
-          try await onLoadFromFile(url)
-        } catch {
-          errorMessage = error.localizedDescription
+      case let .success(urls):
+        guard let url = urls.first else { return }
+        guard url.startAccessingSecurityScopedResource() else {
+          errorMessage = "Permission denied"
+          return
         }
-        isLoading = false
-      }
-    case let .failure(error):
-      errorMessage = error.localizedDescription
+        Task {
+          defer { url.stopAccessingSecurityScopedResource() }
+          isLoading = true
+          errorMessage = nil
+          do {
+            try await onLoadFromFile(url)
+          } catch {
+            errorMessage = error.localizedDescription
+          }
+          isLoading = false
+        }
+      case let .failure(error):
+        errorMessage = error.localizedDescription
     }
   }
 
@@ -330,17 +330,17 @@ private struct RecorderSheet: View {
     errorMessage = nil
 
     #if os(iOS)
-      AVAudioApplication.requestRecordPermission { granted in
-        DispatchQueue.main.async {
-          if granted {
-            beginRecording()
-          } else {
-            errorMessage = "Microphone access denied"
-          }
+    AVAudioApplication.requestRecordPermission { granted in
+      DispatchQueue.main.async {
+        if granted {
+          beginRecording()
+        } else {
+          errorMessage = "Microphone access denied"
         }
       }
+    }
     #else
-      beginRecording()
+    beginRecording()
     #endif
   }
 
@@ -351,14 +351,14 @@ private struct RecorderSheet: View {
     guard let url = recordingURL else { return }
 
     #if os(iOS)
-      do {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default)
-        try session.setActive(true)
-      } catch {
-        errorMessage = "Audio session error"
-        return
-      }
+    do {
+      let session = AVAudioSession.sharedInstance()
+      try session.setCategory(.playAndRecord, mode: .default)
+      try session.setActive(true)
+    } catch {
+      errorMessage = "Audio session error"
+      return
+    }
     #endif
 
     let settings: [String: Any] = [

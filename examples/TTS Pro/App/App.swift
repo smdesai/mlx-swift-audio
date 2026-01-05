@@ -1,7 +1,7 @@
 // Copyright © Anthony DePasquale
 
-import SwiftUI
 import MLXAudio
+import SwiftUI
 
 @main
 struct TTSProApp: App {

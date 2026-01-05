@@ -45,16 +45,16 @@ public protocol ForcedAligner: Sendable {
 
 // MARK: - Default Implementation
 
-extension ForcedAligner {
-  public func align(
+public extension ForcedAligner {
+  func align(
     text: String,
-    fullText: String,
-    baseOffset: String.Index,
+    fullText _: String,
+    baseOffset _: String.Index,
     audioSamples: [Float],
     sampleRate: Int
   ) -> [HighlightedWord] {
     // Default: use basic align (charRanges will be chunk-relative)
-    return align(text: text, audioSamples: audioSamples, sampleRate: sampleRate)
+    align(text: text, audioSamples: audioSamples, sampleRate: sampleRate)
   }
 }
 
@@ -66,7 +66,6 @@ extension ForcedAligner {
 /// linearly interpolates between sampled positions to reconstruct the full matrix.
 /// This reduces GPU memory and CPU transfer overhead while maintaining alignment quality.
 public enum SparseAttentionInterpolator {
-
   /// Interpolate sparse attention samples to produce full attention for all speech positions.
   ///
   /// - Parameters:
@@ -89,7 +88,7 @@ public enum SparseAttentionInterpolator {
     var result: [[Float]] = []
     result.reserveCapacity(totalSpeechTokens)
 
-    for i in 0..<totalSpeechTokens {
+    for i in 0 ..< totalSpeechTokens {
       // Find bracketing samples
       let (prevSample, nextSample) = findBracketingSamples(for: i, in: sorted)
 
@@ -103,7 +102,7 @@ public enum SparseAttentionInterpolator {
         // Linear interpolation between prev and next
         let t = Float(i - prevSample.index) / Float(nextSample.index - prevSample.index)
         var interpolated = [Float](repeating: 0, count: textTokenCount)
-        for j in 0..<min(textTokenCount, prevSample.attention.count, nextSample.attention.count) {
+        for j in 0 ..< min(textTokenCount, prevSample.attention.count, nextSample.attention.count) {
           interpolated[j] = (1 - t) * prevSample.attention[j] + t * nextSample.attention[j]
         }
         result.append(interpolated)
@@ -159,7 +158,6 @@ public enum SparseAttentionInterpolator {
 ///
 /// Accuracy is significantly higher than heuristic-based alignment (~95% vs ~80%).
 public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
-
   // MARK: - Properties
 
   /// Captured alignment data from T3 generation
@@ -205,7 +203,7 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
     audioSamples: [Float],
     sampleRate: Int
   ) -> [HighlightedWord] {
-    return align(
+    align(
       text: text,
       fullText: text,
       baseOffset: text.startIndex,
@@ -247,7 +245,7 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
     vDSP_vramp([Float(0)], [speechScale], &speechRatios, 1, vDSP_Length(numSpeechTokens))
 
     // Process each text row with vectorized operations
-    for textIdx in 0..<numTextTokens {
+    for textIdx in 0 ..< numTextTokens {
       let expectedRatio = Float(textIdx) / Float(max(1, numTextTokens - 1))
       let rowOffset = textIdx * numSpeechTokens
 
@@ -340,9 +338,9 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
     var wordGroups: [(wordText: String, charRange: Range<String.Index>, speechStart: Int, speechEnd: Int)] = []
 
     var currentWord = ""
-    var currentWordStart: String.Index? = nil
-    var currentSpeechStart: Int? = nil
-    var currentSpeechEnd: Int = 0
+    var currentWordStart: String.Index?
+    var currentSpeechStart: Int?
+    var currentSpeechEnd = 0
     var charPosition = text.startIndex
 
     // Build mapping from alignment path
@@ -365,7 +363,7 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
       // Get speech range for this token
       let speechRange = tokenToSpeechRange[tokenIdx] ?? (start: currentSpeechEnd, end: currentSpeechEnd)
 
-      if startsWithSpace && !currentWord.isEmpty {
+      if startsWithSpace, !currentWord.isEmpty {
         // Complete previous word
         if let wordStart = currentWordStart, let speechStart = currentSpeechStart {
           let wordEnd = charPosition
@@ -380,7 +378,7 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
         // Start new word
         currentWord = trimmedToken
         // Advance past whitespace
-        while charPosition < text.endIndex && text[charPosition].isWhitespace {
+        while charPosition < text.endIndex, text[charPosition].isWhitespace {
           charPosition = text.index(after: charPosition)
         }
         currentWordStart = charPosition
@@ -436,12 +434,69 @@ public final class AttentionBasedAligner: ForcedAligner, @unchecked Sendable {
       }
 
       return HighlightedWord(
-        word: group.wordText,
+        word: Self.cleanupByteLevelText(group.wordText),
         start: startTime,
         end: endTime,
         charRange: adjustedRange
       )
     }
+  }
+
+  /// Cleans up byte-level BPE artifacts from decoded text.
+  ///
+  /// GPT-2 uses byte-level BPE which maps bytes to unicode characters.
+  /// When decoding individual tokens, some characters may not be properly
+  /// converted back. This function normalizes common problematic characters.
+  private static func cleanupByteLevelText(_ text: String) -> String {
+    var result = text
+
+    // GPT-2 byte-level BPE mappings that may not decode correctly:
+    // - Byte 32 (space) -> U+0120 (Ġ)
+    // - Various punctuation and special characters
+
+    // Remove the GPT-2 space marker if present
+    result = result.replacingOccurrences(of: "\u{0120}", with: "")
+
+    // Normalize curly quotes to straight quotes
+    result = result.replacingOccurrences(of: "\u{2018}", with: "'") // Left single quote
+    result = result.replacingOccurrences(of: "\u{2019}", with: "'") // Right single quote
+    result = result.replacingOccurrences(of: "\u{201C}", with: "\"") // Left double quote
+    result = result.replacingOccurrences(of: "\u{201D}", with: "\"") // Right double quote
+
+    // Handle potential byte-level encoding issues for apostrophe
+    // The apostrophe (byte 39 / 0x27) should decode correctly,
+    // but if there are issues, try common replacements
+    result = result.replacingOccurrences(of: "\u{00A7}", with: "'") // Section sign (sometimes misused)
+    result = result.replacingOccurrences(of: "\u{00B4}", with: "'") // Acute accent
+    result = result.replacingOccurrences(of: "\u{0060}", with: "'") // Grave accent
+
+    // Handle Unicode replacement character (appears when UTF-8 decoding fails)
+    // Remove it since the actual character is likely already present
+    result = result.replacingOccurrences(of: "\u{FFFD}", with: "")
+
+    // GPT-2 byte-level BPE maps non-printable bytes to unicode characters:
+    // - Bytes 0-31 -> U+0100-U+011F (control characters)
+    // - Byte 32 (space) -> U+0120 (Ġ) - but only at word start, usually trimmed
+    // - Bytes 127-160 -> U+0121-U+0142
+    // - Byte 173 -> U+0143
+    //
+    // If these appear in the final text, the decoder didn't convert them properly.
+    // Map them back to spaces (most likely intended character) or remove if control.
+    result = result.replacingOccurrences(of: "\u{0120}", with: " ") // Ġ -> space
+
+    // Remove control character mappings (bytes 0-31, 127)
+    for codePoint in 0x0100 ... 0x011F {
+      if let scalar = Unicode.Scalar(codePoint) {
+        result = result.replacingOccurrences(of: String(scalar), with: "")
+      }
+    }
+    // Byte 127 (DEL) -> U+0121
+    result = result.replacingOccurrences(of: "\u{0121}", with: "")
+
+    // Trim any leading/trailing whitespace that might have been introduced
+    result = result.trimmingCharacters(in: .whitespaces)
+
+    return result
   }
 }
 
@@ -473,7 +528,7 @@ private func alignmentDtw(
 
       // Prefer diagonal (0) for alignment, then horizontal (2) to extend current text token
       let (c, t): (Float, Int8)
-      if c0 <= c1 && c0 <= c2 {
+      if c0 <= c1, c0 <= c2 {
         // Diagonal: both text and speech advance - preferred for alignment
         (c, t) = (c0, 0)
       } else if c2 <= c1 {
@@ -490,8 +545,12 @@ private func alignmentDtw(
   }
 
   // Boundary conditions
-  for j in 0 ..< costCols { trace[idx(0, j)] = 2 }
-  for i in 0 ..< costRows { trace[idx(i, 0)] = 1 }
+  for j in 0 ..< costCols {
+    trace[idx(0, j)] = 2
+  }
+  for i in 0 ..< costRows {
+    trace[idx(i, 0)] = 1
+  }
 
   // Backtrace
   var i = costRows - 1

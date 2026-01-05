@@ -28,8 +28,8 @@ public struct HighlightedWord: Sendable, Equatable {
 
   public static func == (lhs: HighlightedWord, rhs: HighlightedWord) -> Bool {
     lhs.word == rhs.word &&
-    lhs.start == rhs.start &&
-    lhs.end == rhs.end
+      lhs.start == rhs.start &&
+      lhs.end == rhs.end
   }
 }
 

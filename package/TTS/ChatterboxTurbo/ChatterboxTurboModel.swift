@@ -497,6 +497,7 @@ class ChatterboxTurboModel: Module, @unchecked Sendable {
       func set(_ alignData: AlignmentData) {
         data = alignData
       }
+
       func get() -> AlignmentData? {
         data
       }

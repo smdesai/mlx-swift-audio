@@ -221,7 +221,7 @@ actor ChatterboxTurboTTS {
     maxNewTokens: Int = 800
   ) -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
     // Delegate to attention-based alignment
-    return generateStreamingWithAttentionAlignment(
+    generateStreamingWithAttentionAlignment(
       text: text,
       conditionals: conditionals,
       temperature: temperature,

@@ -16,17 +16,17 @@ public enum HighlightThemePreset: String, CaseIterable, Sendable {
   /// Get the theme for this preset
   public var theme: HighlightTheme {
     switch self {
-    case .default:
-      return HighlightTheme(spokenColor: .green, currentWordColor: .yellow, upcomingColor: .primary)
-    case .highContrast:
-      return HighlightTheme(spokenColor: .gray, currentWordColor: .white, upcomingColor: .primary)
-    case .subtle:
-      return HighlightTheme(spokenColor: Color.primary.opacity(0.5), currentWordColor: .accentColor, upcomingColor: .primary)
-    case .ocean:
-      return HighlightTheme(spokenColor: .cyan, currentWordColor: .orange, upcomingColor: Color.primary.opacity(0.8))
-    case .custom:
-      // Custom returns default; actual custom colors are stored separately
-      return HighlightTheme(spokenColor: .green, currentWordColor: .yellow, upcomingColor: .primary)
+      case .default:
+        HighlightTheme(spokenColor: .green, currentWordColor: .yellow, upcomingColor: .primary)
+      case .highContrast:
+        HighlightTheme(spokenColor: .gray, currentWordColor: .white, upcomingColor: .primary)
+      case .subtle:
+        HighlightTheme(spokenColor: Color.primary.opacity(0.5), currentWordColor: .accentColor, upcomingColor: .primary)
+      case .ocean:
+        HighlightTheme(spokenColor: .cyan, currentWordColor: .orange, upcomingColor: Color.primary.opacity(0.8))
+      case .custom:
+        // Custom returns default; actual custom colors are stored separately
+        HighlightTheme(spokenColor: .green, currentWordColor: .yellow, upcomingColor: .primary)
     }
   }
 }
@@ -99,7 +99,7 @@ struct HighlightedTextView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-          if !appState.inputText.isEmpty && !appState.isHighlighting {
+          if !appState.inputText.isEmpty, !appState.isHighlighting {
             Button {
               appState.inputText = ""
               isEditing = false
@@ -257,7 +257,8 @@ struct HighlightableAttributedString: View {
 
     // Validate range bounds
     guard currentWordRange.lowerBound >= text.startIndex,
-          currentWordRange.upperBound <= text.endIndex else {
+          currentWordRange.upperBound <= text.endIndex
+    else {
       return AttributedString(text)
     }
 

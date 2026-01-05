@@ -107,9 +107,9 @@ private struct AudioMetricsView: View {
 
   private func formatTime(_ seconds: TimeInterval) -> String {
     if seconds < 1 {
-      return String(format: "%.0fms", seconds * 1000)
+      String(format: "%.0fms", seconds * 1000)
     } else {
-      return String(format: "%.2fs", seconds)
+      String(format: "%.2fs", seconds)
     }
   }
 }

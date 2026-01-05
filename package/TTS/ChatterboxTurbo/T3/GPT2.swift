@@ -223,7 +223,7 @@ class GPT2Block: Module {
   /// Standard forward pass
   func callAsFunction(
     _ hiddenStates: MLXArray,
-    attentionMask: MLXArray? = nil,
+    attentionMask _: MLXArray? = nil,
     cache: KVCache?
   ) -> MLXArray {
     forward(hiddenStates, cache: cache, outputAttentions: false).hiddenStates
@@ -295,7 +295,7 @@ class GPT2Model: Module {
   func callAsFunction(
     inputIds: MLXArray? = nil,
     inputsEmbeds: MLXArray? = nil,
-    attentionMask: MLXArray? = nil,
+    attentionMask _: MLXArray? = nil,
     cache: [KVCache]? = nil
   ) -> MLXArray {
     forward(

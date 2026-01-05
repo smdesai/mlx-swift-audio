@@ -14,13 +14,13 @@ import Testing
 /// Metrics for evaluating alignment quality
 struct AlignmentMetrics: CustomStringConvertible {
   let wordCount: Int
-  let coveragePercent: Float       // Words with valid timings
-  let monotonicityPercent: Float   // Words in monotonically increasing order
-  let avgDurationMs: Float         // Average word duration
-  let minDurationMs: Float         // Minimum duration (should be > 50ms)
-  let maxDurationMs: Float         // Maximum duration (should be < 2000ms)
-  let durationVariance: Float      // Variance in durations (lower = more uniform)
-  let gapPercent: Float            // Percent of audio covered by word timings
+  let coveragePercent: Float // Words with valid timings
+  let monotonicityPercent: Float // Words in monotonically increasing order
+  let avgDurationMs: Float // Average word duration
+  let minDurationMs: Float // Minimum duration (should be > 50ms)
+  let maxDurationMs: Float // Maximum duration (should be < 2000ms)
+  let durationVariance: Float // Variance in durations (lower = more uniform)
+  let gapPercent: Float // Percent of audio covered by word timings
 
   var description: String {
     """
@@ -54,8 +54,8 @@ struct AlignmentMetrics: CustomStringConvertible {
 
     // Monotonicity: count words with monotonically increasing start times
     var monotonicCount = 1
-    for i in 1..<timings.count {
-      if timings[i].start >= timings[i-1].start {
+    for i in 1 ..< timings.count {
+      if timings[i].start >= timings[i - 1].start {
         monotonicCount += 1
       }
     }
@@ -116,7 +116,7 @@ struct AlignmentAccuracyTests {
 
     let frameCount = Int(buffer.frameLength)
     var samples = [Float](repeating: 0, count: frameCount)
-    for i in 0..<frameCount {
+    for i in 0 ..< frameCount {
       samples[i] = floatData[0][i]
     }
 
@@ -209,7 +209,7 @@ struct AlignmentAccuracyTests {
       report += "\n"
 
       // Save audio for manual verification
-      let audioURL = Self.outputDir.appendingPathComponent("test_\(i+1)_audio.wav")
+      let audioURL = Self.outputDir.appendingPathComponent("test_\(i + 1)_audio.wav")
       try saveWav(samples: samples, sampleRate: sampleRate, to: audioURL)
       print("  Audio saved to: \(audioURL.path)")
     }
@@ -294,15 +294,14 @@ struct AlignmentAccuracyTests {
 
 @Suite(.serialized)
 struct SparseAttentionSamplingTests {
-
   /// Test linear interpolation of attention vectors
   @Test func interpolateAttentionVectors() {
     // Arrange: Create sparse samples at positions 0, 4, 8
     let textTokenCount = 3
     let sparseSamples: [(index: Int, attention: [Float])] = [
-      (0, [1.0, 0.0, 0.0]),   // Position 0: attention on first text token
-      (4, [0.0, 1.0, 0.0]),   // Position 4: attention on second text token
-      (8, [0.0, 0.0, 1.0]),   // Position 8: attention on third text token
+      (0, [1.0, 0.0, 0.0]), // Position 0: attention on first text token
+      (4, [0.0, 1.0, 0.0]), // Position 4: attention on second text token
+      (8, [0.0, 0.0, 1.0]), // Position 8: attention on third text token
     ]
     let totalSpeechTokens = 9
 
@@ -382,11 +381,11 @@ struct SparseAttentionSamplingTests {
 
     // Create "ground truth" full attention (gradual focus shift across text)
     var fullSamples: [[Float]] = []
-    for speechIdx in 0..<totalSpeechTokens {
+    for speechIdx in 0 ..< totalSpeechTokens {
       let progress = Float(speechIdx) / Float(totalSpeechTokens - 1)
       var attention = [Float](repeating: 0, count: textTokenCount)
       // Create a soft focus that shifts from first to last text token
-      for textIdx in 0..<textTokenCount {
+      for textIdx in 0 ..< textTokenCount {
         let textProgress = Float(textIdx) / Float(textTokenCount - 1)
         let distance = abs(textProgress - progress)
         attention[textIdx] = exp(-distance * 3) // Gaussian-like falloff
@@ -413,8 +412,8 @@ struct SparseAttentionSamplingTests {
 
     // Measure error between full and interpolated
     var totalError: Float = 0
-    for i in 0..<totalSpeechTokens {
-      for j in 0..<textTokenCount {
+    for i in 0 ..< totalSpeechTokens {
+      for j in 0 ..< textTokenCount {
         let error = abs(fullSamples[i][j] - interpolated[i][j])
         totalError += error
       }
@@ -441,7 +440,7 @@ private func saveWav(samples: [Float], sampleRate: Int, to url: URL) throws {
   let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
   buffer.frameLength = AVAudioFrameCount(samples.count)
 
-  for i in 0..<samples.count {
+  for i in 0 ..< samples.count {
     buffer.floatChannelData![0][i] = samples[i]
   }
 

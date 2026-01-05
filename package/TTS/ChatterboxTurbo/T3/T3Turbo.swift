@@ -436,12 +436,12 @@ public struct AlignmentHeadConfig: Sendable {
 
   /// Full sampling config (no interpolation) - use for maximum accuracy
   public static let chatterboxTurboFull = AlignmentHeadConfig(heads: [
-    (4, 13), (3, 13), (5, 11), (6, 7), (2, 9)
+    (4, 13), (3, 13), (5, 11), (6, 7), (2, 9),
   ], sampleInterval: 1)
 
   public init(heads: [(layer: Int, head: Int)], sampleInterval: Int = 4) {
     self.heads = heads
-    self.sampleInterval = max(1, sampleInterval)  // Minimum 1 (sample every token)
+    self.sampleInterval = max(1, sampleInterval) // Minimum 1 (sample every token)
   }
 }
 
@@ -530,7 +530,7 @@ private final class T3TurboStreamState: @unchecked Sendable {
       let textEnd = min(conditioningLength + textTokenCount, keyLen)
 
       if textStart < textEnd {
-        let textAttn = headAttn[textStart..<textEnd].asArray(Float.self)
+        let textAttn = headAttn[textStart ..< textEnd].asArray(Float.self)
         for (i, a) in textAttn.enumerated() where i < textTokenCount {
           avgAttention[i] += a
         }
@@ -541,7 +541,7 @@ private final class T3TurboStreamState: @unchecked Sendable {
     // Normalize by head count
     if headCount > 1 {
       let scale = 1.0 / Float(headCount)
-      for i in 0..<avgAttention.count {
+      for i in 0 ..< avgAttention.count {
         avgAttention[i] *= scale
       }
     }
@@ -570,7 +570,7 @@ private final class T3TurboStreamState: @unchecked Sendable {
     self.maxGenLen = maxGenLen
     self.chunkSize = chunkSize
     self.alignmentConfig = alignmentConfig
-    self.alignmentLayers = alignmentConfig?.layers ?? []
+    alignmentLayers = alignmentConfig?.layers ?? []
 
     // Initialize generation
     var tokens = textTokens

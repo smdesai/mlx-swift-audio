@@ -52,7 +52,7 @@ final class AppState {
   private var timingsSourceText: String = ""
 
   /// Currently highlighted word index (for efficient updates)
-  private(set) var currentHighlightedWordIndex: Int? = nil
+  private(set) var currentHighlightedWordIndex: Int?
 
   /// Timer for polling playback position during highlighting
   private var highlightUpdateTimer: Timer?
@@ -69,7 +69,7 @@ final class AppState {
   var customCurrentWordColor: Color = .yellow
 
   /// Custom upcoming color (used when preset is .custom)
-  var customUpcomingColor: Color = Color.primary
+  var customUpcomingColor: Color = .primary
 
   /// The active highlight theme based on preset or custom colors
   var highlightTheme: HighlightTheme {
@@ -278,12 +278,12 @@ final class AppState {
 
   /// Start a timer to poll playback position and update highlight index
   /// Uses ~60fps (16ms) for smooth word transitions that align with audio
-  private func startHighlightUpdateTimer(duration: TimeInterval) {
+  private func startHighlightUpdateTimer(duration _: TimeInterval) {
     stopHighlightUpdateTimer()
 
     highlightUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
       Task { @MainActor in
-        guard let self = self else { return }
+        guard let self else { return }
 
         // Stop if text was edited
         guard self.inputText == self.timingsSourceText else {
@@ -315,7 +315,7 @@ final class AppState {
     // First check if we're still in the current word
     if startIndex < wordTimings.count {
       let current = wordTimings[startIndex]
-      if current.start <= position && position < current.end {
+      if current.start <= position, position < current.end {
         // Still in current word, no update needed
         return
       }
@@ -325,16 +325,16 @@ final class AppState {
     let nextIndex = startIndex + 1
     if nextIndex < wordTimings.count {
       let next = wordTimings[nextIndex]
-      if next.start <= position && position < next.end {
+      if next.start <= position, position < next.end {
         currentHighlightedWordIndex = nextIndex
         return
       }
     }
 
     // Fall back to linear search from current position
-    for i in startIndex..<wordTimings.count {
+    for i in startIndex ..< wordTimings.count {
       let timing = wordTimings[i]
-      if timing.start <= position && position < timing.end {
+      if timing.start <= position, position < timing.end {
         if currentHighlightedWordIndex != i {
           currentHighlightedWordIndex = i
         }
@@ -367,7 +367,8 @@ final class AppState {
   func currentWordProgress() -> Double {
     guard isHighlighting,
           let index = currentHighlightedWordIndex,
-          index < wordTimings.count else {
+          index < wordTimings.count
+    else {
       return 0
     }
 
@@ -780,5 +781,3 @@ extension AppState {
     set { engineManager.outeTTSEngine.topP = newValue }
   }
 }
-
-

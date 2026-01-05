@@ -51,7 +51,7 @@ struct InputSection: View {
             }
 
             // Use word highlighting for Chatterbox Turbo if enabled
-            if appState.selectedProvider == .chatterboxTurbo && appState.highlightingEnabled {
+            if appState.selectedProvider == .chatterboxTurbo, appState.highlightingEnabled {
               await appState.generateStreamingWithHighlighting()
             } else {
               await appState.generateStreaming()

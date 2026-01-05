@@ -197,7 +197,7 @@ private struct ActionsSection: View {
               try? await appState.loadEngine()
             }
             // Use word highlighting for Chatterbox Turbo if enabled
-            if appState.selectedProvider == .chatterboxTurbo && appState.highlightingEnabled {
+            if appState.selectedProvider == .chatterboxTurbo, appState.highlightingEnabled {
               await appState.generateStreamingWithHighlighting()
             } else {
               await appState.generateStreaming()
@@ -265,18 +265,18 @@ private struct MinimalButton: View {
   private var backgroundColor: Color {
     if isDisabled { return Color.white.opacity(0.05) }
     switch style {
-    case .primary: return .white
-    case .secondary: return Color.white.opacity(0.1)
-    case .destructive: return Color(red: 1.0, green: 0.3, blue: 0.3)
+      case .primary: return .white
+      case .secondary: return Color.white.opacity(0.1)
+      case .destructive: return Color(red: 1.0, green: 0.3, blue: 0.3)
     }
   }
 
   private var foregroundColor: Color {
     if isDisabled { return .white.opacity(0.3) }
     switch style {
-    case .primary: return .black
-    case .secondary: return .white
-    case .destructive: return .white
+      case .primary: return .black
+      case .secondary: return .white
+      case .destructive: return .white
     }
   }
 
@@ -443,9 +443,9 @@ private struct SettingsSheet: View {
             .foregroundStyle(.white)
           }
         }
-        #if os(iOS)
+      #if os(iOS)
         .toolbarBackground(Color(red: 0.06, green: 0.06, blue: 0.08), for: .navigationBar)
-        #endif
+      #endif
     }
     .presentationBackground(Color(red: 0.06, green: 0.06, blue: 0.08))
   }

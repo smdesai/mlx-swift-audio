@@ -4,9 +4,9 @@ import Foundation
 
 // MARK: - Word Timing Result
 
-extension ChatterboxTurboEngine {
+public extension ChatterboxTurboEngine {
   /// Result type for word-level timing generation
-  public struct WordTimingResult: Sendable {
+  struct WordTimingResult: Sendable {
     /// All word timings across all chunks
     public let wordTimings: [HighlightedWord]
 
@@ -46,7 +46,7 @@ extension ChatterboxTurboEngine {
 
 // MARK: - Word Highlighting Methods
 
-extension ChatterboxTurboEngine {
+public extension ChatterboxTurboEngine {
   /// Generate audio with word-level timings for highlighting.
   ///
   /// This method generates audio and returns word-level timing information
@@ -57,7 +57,7 @@ extension ChatterboxTurboEngine {
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
   /// - Returns: WordTimingResult containing all word timings and metadata
-  public func generateWithTimings(
+  func generateWithTimings(
     _ text: String,
     referenceAudio: ChatterboxTurboReferenceAudio? = nil
   ) async throws -> WordTimingResult {
@@ -124,12 +124,12 @@ extension ChatterboxTurboEngine {
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
   /// - Returns: An async stream of audio chunks with word timings
-  public func generateStreamingWithTimings(
+  func generateStreamingWithTimings(
     _ text: String,
     referenceAudio: ChatterboxTurboReferenceAudio? = nil
   ) async throws -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
     // Delegate to attention-based alignment
-    return try await generateStreamingWithAttentionAlignment(text, referenceAudio: referenceAudio)
+    try await generateStreamingWithAttentionAlignment(text, referenceAudio: referenceAudio)
   }
 
   /// Play audio with streaming and return word timings for highlighting.
@@ -143,7 +143,7 @@ extension ChatterboxTurboEngine {
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
   /// - Returns: WordTimingResult containing all word timings and metadata
   @discardableResult
-  public func sayWithTimings(
+  func sayWithTimings(
     _ text: String,
     referenceAudio: ChatterboxTurboReferenceAudio? = nil
   ) async throws -> WordTimingResult {
@@ -202,7 +202,7 @@ extension ChatterboxTurboEngine {
   ///   - text: The text to synthesize
   ///   - referenceAudio: Prepared reference audio (if nil, uses default sample)
   /// - Returns: An async stream of audio chunks with attention-aligned word timings
-  public func generateStreamingWithAttentionAlignment(
+  func generateStreamingWithAttentionAlignment(
     _ text: String,
     referenceAudio: ChatterboxTurboReferenceAudio? = nil
   ) async throws -> AsyncThrowingStream<AudioChunkWithTimings, Error> {
@@ -225,11 +225,10 @@ extension ChatterboxTurboEngine {
     }
 
     // Prepare reference audio if needed
-    let ref: ChatterboxTurboReferenceAudio
-    if let referenceAudio {
-      ref = referenceAudio
+    let ref: ChatterboxTurboReferenceAudio = if let referenceAudio {
+      referenceAudio
     } else {
-      ref = try await prepareDefaultReferenceAudio()
+      try await prepareDefaultReferenceAudio()
     }
 
     // Get stream from model with attention alignment
@@ -261,7 +260,7 @@ extension ChatterboxTurboEngine {
   ///   - onFirstAudio: Called when the first audio chunk is ready (for TTFA tracking)
   /// - Returns: WordTimingResult containing all word timings and metadata
   @discardableResult
-  public func sayStreamingWithTimings(
+  func sayStreamingWithTimings(
     _ text: String,
     referenceAudio: ChatterboxTurboReferenceAudio? = nil,
     onTimingsUpdate: (([HighlightedWord]) -> Void)? = nil,
