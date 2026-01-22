@@ -66,9 +66,9 @@ struct S3GenRefDict: @unchecked Sendable {
 /// using a Conformer encoder and flow matching decoder with speaker conditioning.
 class S3Token2Mel: Module {
   @ModuleInfo(key: "speaker_encoder") var speakerEncoder: CAMPPlus
-  @ModuleInfo var flow: CausalMaskedDiffWithXvec
+  @ModuleInfo(key: "flow") var flow: CausalMaskedDiffWithXvec
 
-  override init() {
+  init(meanflow: Bool = false) {
     // Speaker encoder (CAM++ for x-vector extraction)
     _speakerEncoder.wrappedValue = CAMPPlus()
 
@@ -102,6 +102,7 @@ class S3Token2Mel: Module {
       numMidBlocks: 12,
       numHeads: 8,
       actFn: "gelu",
+      meanflow: meanflow
     )
 
     let cfmParams = CFMParams()
@@ -204,10 +205,19 @@ class S3Token2Mel: Module {
   }
 
   /// Generate mel-spectrograms from S3 speech tokens
+  ///
+  /// - Parameters:
+  ///   - speechTokens: Speech tokens to decode
+  ///   - refDict: Reference dictionary with prompt tokens, features, and embeddings
+  ///   - finalize: Whether this is the final chunk
+  ///   - nTimesteps: Number of CFM timesteps (default 10, use 2 for Turbo)
+  ///   - meanflow: Use meanflow mode for Turbo models (basic Euler without CFG)
   func callAsFunction(
     speechTokens: MLXArray,
     refDict: S3GenRefDict,
     finalize: Bool = false,
+    nTimesteps: Int = 10,
+    meanflow: Bool = false,
   ) -> MLXArray {
     var tokens = speechTokens
     if tokens.ndim == 1 {
@@ -225,6 +235,8 @@ class S3Token2Mel: Module {
       promptFeatLen: refDict.promptFeatLen,
       embedding: refDict.embedding,
       finalize: finalize,
+      nTimesteps: nTimesteps,
+      meanflow: meanflow,
     )
 
     return outputMels
@@ -242,7 +254,7 @@ class S3Token2Wav: S3Token2Mel {
   /// Fade-in window buffer - underscore prefix excludes from parameter validation
   var _trimFade: MLXArray
 
-  override init() {
+  override init(meanflow: Bool = false) {
     // F0 predictor for vocoder
     let f0Predictor = ConvRNNF0Predictor()
 
@@ -261,20 +273,31 @@ class S3Token2Wav: S3Token2Mel {
     let fadeCos = (MLX.cos(MLX.linspace(Float.pi, Float(0), count: nTrim)) + 1) / 2
     _trimFade = MLX.concatenated([MLXArray.zeros([nTrim]), fadeCos])
 
-    super.init()
+    super.init(meanflow: meanflow)
   }
 
   /// Generate waveforms from S3 speech tokens
+  ///
+  /// - Parameters:
+  ///   - speechTokens: Speech tokens to decode
+  ///   - refDict: Reference dictionary with prompt tokens, features, and embeddings
+  ///   - finalize: Whether this is the final chunk
+  ///   - nTimesteps: Number of CFM timesteps (default 10, use 2 for Turbo)
+  ///   - meanflow: Use meanflow mode for Turbo models (basic Euler without CFG)
   override func callAsFunction(
     speechTokens: MLXArray,
     refDict: S3GenRefDict,
     finalize: Bool = false,
+    nTimesteps: Int = 10,
+    meanflow: Bool = false,
   ) -> MLXArray {
     // Generate mel-spectrograms
     let outputMels = super.callAsFunction(
       speechTokens: speechTokens,
       refDict: refDict,
       finalize: finalize,
+      nTimesteps: nTimesteps,
+      meanflow: meanflow,
     )
 
     // Generate waveform from mels
@@ -296,11 +319,15 @@ class S3Token2Wav: S3Token2Mel {
     speechTokens: MLXArray,
     refDict: S3GenRefDict,
     finalize: Bool = false,
+    nTimesteps: Int = 10,
+    meanflow: Bool = false,
   ) -> MLXArray {
     super.callAsFunction(
       speechTokens: speechTokens,
       refDict: refDict,
       finalize: finalize,
+      nTimesteps: nTimesteps,
+      meanflow: meanflow,
     )
   }
 
@@ -319,11 +346,15 @@ class S3Token2Wav: S3Token2Mel {
     refDict: S3GenRefDict,
     cacheSource: MLXArray? = nil,
     finalize: Bool = true,
+    nTimesteps: Int = 10,
+    meanflow: Bool = false,
   ) -> (MLXArray, MLXArray) {
     let outputMels = flowInference(
       speechTokens: speechTokens,
       refDict: refDict,
       finalize: finalize,
+      nTimesteps: nTimesteps,
+      meanflow: meanflow,
     )
 
     let (outputWavs, outputSources) = hiftInference(

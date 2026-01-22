@@ -1,5 +1,5 @@
 // Copyright © 2025 Resemble AI (original model implementation)
-// Copyright © Anthony DePasquale (MLX port)
+// Copyright © Sachin Desai (MLX port)
 // Ported to MLX from https://github.com/resemble-ai/chatterbox
 // License: licenses/chatterbox.txt
 
@@ -13,14 +13,6 @@ import MLX
 ///
 /// Create using `ChatterboxTurboEngine.prepareReferenceAudio(from:)` methods.
 /// Can be reused across multiple `say()` or `generate()` calls for efficient multi-speaker scenarios.
-///
-/// ```swift
-/// let speakerA = try await engine.prepareReferenceAudio(from: urlA)
-/// let speakerB = try await engine.prepareReferenceAudio(from: urlB)
-///
-/// try await engine.say("Hello from A", referenceAudio: speakerA)
-/// try await engine.say("Hello from B", referenceAudio: speakerB)  // instant switch
-/// ```
 public struct ChatterboxTurboReferenceAudio: Sendable {
   /// The pre-computed conditionals for generation
   let conditionals: ChatterboxTurboConditionals
@@ -44,16 +36,16 @@ public struct ChatterboxTurboReferenceAudio: Sendable {
 
 /// Chatterbox Turbo TTS engine - Fast TTS with reference audio
 ///
-/// A faster, distilled variant of Chatterbox that uses reference audio for voice cloning.
-/// Does not support emotion exaggeration or classifier-free guidance.
+/// A faster variant of Chatterbox that uses GPT-2 backbone and 2-step CFM.
+/// Supports generating speech using reference audio clips.
 @Observable
 @MainActor
 public final class ChatterboxTurboEngine: TTSEngine {
   // MARK: - TTSEngine Protocol Properties
 
   public let provider: TTSProvider = .chatterboxTurbo
-  public let supportedStreamingGranularities: Set<StreamingGranularity> = [.sentence]
-  public let defaultStreamingGranularity: StreamingGranularity = .sentence
+  public var supportedStreamingGranularities: Set<StreamingGranularity> { [.sentence] }
+  public var defaultStreamingGranularity: StreamingGranularity { .sentence }
   public private(set) var isLoaded: Bool = false
   public private(set) var isGenerating: Bool = false
   public private(set) var isPlaying: Bool = false
@@ -68,17 +60,17 @@ public final class ChatterboxTurboEngine: TTSEngine {
   /// Temperature for sampling (higher = more variation)
   public var temperature: Float = 0.8
 
+  /// Top-k sampling parameter
+  public var topK: Int = 1000
+
   /// Top-p (nucleus) sampling threshold
   public var topP: Float = 0.95
-
-  /// Top-k sampling value
-  public var topK: Int = 1000
 
   /// Repetition penalty
   public var repetitionPenalty: Float = 1.2
 
   /// Maximum number of tokens to generate
-  public var maxNewTokens: Int = 1000
+  public var maxNewTokens: Int = 800
 
   // MARK: - Private Properties
 
@@ -229,8 +221,7 @@ public final class ChatterboxTurboEngine: TTSEngine {
     let originalDuration = Float(samples.count) / Float(sampleRate)
     Log.tts.debug("Original reference audio duration: \(originalDuration)s")
 
-    // Trim silence from beginning and end (matching Python implementation)
-    // Chatterbox Python uses trim_top_db=20 which is more aggressive than CosyVoice2
+    // Trim silence from beginning and end
     let trimmedSamples = AudioTrimmer.trimSilence(
       samples,
       sampleRate: sampleRate,
@@ -380,9 +371,9 @@ public final class ChatterboxTurboEngine: TTSEngine {
 
     // Capture current parameter values
     let currentTemperature = temperature
-    let currentRepetitionPenalty = repetitionPenalty
-    let currentTopP = topP
     let currentTopK = topK
+    let currentTopP = topP
+    let currentRepetitionPenalty = repetitionPenalty
     let currentMaxNewTokens = maxNewTokens
 
     return playback.createGenerationStream(
@@ -403,21 +394,24 @@ public final class ChatterboxTurboEngine: TTSEngine {
       }
 
       // Prepare reference audio if needed
-      if referenceAudio == nil, defaultReferenceAudio == nil {
-        defaultReferenceAudio = try await prepareDefaultReferenceAudio()
-      }
-      guard let referenceAudio = referenceAudio ?? defaultReferenceAudio else {
-        throw TTSError.modelNotLoaded
+      let ref: ChatterboxTurboReferenceAudio
+      if let referenceAudio {
+        ref = referenceAudio
+      } else {
+        if defaultReferenceAudio == nil {
+          defaultReferenceAudio = try await prepareDefaultReferenceAudio()
+        }
+        ref = defaultReferenceAudio!
       }
 
       // Wrap model stream to convert [Float] -> AudioChunk
       let modelStream = await chatterboxTurboTTS.generateStreaming(
         text: trimmedText,
-        conditionals: referenceAudio.conditionals,
+        conditionals: ref.conditionals,
         temperature: currentTemperature,
-        repetitionPenalty: currentRepetitionPenalty,
-        topP: currentTopP,
         topK: currentTopK,
+        topP: currentTopP,
+        repetitionPenalty: currentRepetitionPenalty,
         maxNewTokens: currentMaxNewTokens
       )
 

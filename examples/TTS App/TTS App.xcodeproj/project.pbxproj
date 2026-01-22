@@ -7,10 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0A6ECD582E6C2CE300837C54 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 0A6ECD572E6C2CE300837C54 /* MLXLLM */; };
-		0A6ECD5A2E6C2CE300837C54 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 0A6ECD592E6C2CE300837C54 /* MLXLMCommon */; };
-		92D6AB022EE0204C0062E6A9 /* MLXAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 92D6AB032EE0204C0062E6A9 /* MLXAudio */; };
-		92D6AB042EE0204C0062E6AA /* Kokoro in Frameworks */ = {isa = PBXBuildFile; productRef = 92D6AB052EE0204C0062E6AB /* Kokoro */; };
+		032A089C2F22B387008F5DD6 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 032A089B2F22B387008F5DD6 /* MLXEmbedders */; };
+		032A089E2F22B387008F5DD6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A089D2F22B387008F5DD6 /* MLXLLM */; };
+		032A08A02F22B387008F5DD6 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 032A089F2F22B387008F5DD6 /* MLXLMCommon */; };
+		032A08A22F22B387008F5DD6 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08A12F22B387008F5DD6 /* MLXVLM */; };
+		032A08A52F22B45E008F5DD6 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08A42F22B45E008F5DD6 /* MLXEmbedders */; };
+		032A08A72F22B45E008F5DD6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08A62F22B45E008F5DD6 /* MLXLLM */; };
+		032A08A92F22B45E008F5DD6 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08A82F22B45E008F5DD6 /* MLXLMCommon */; };
+		032A08AB2F22B45E008F5DD6 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08AA2F22B45E008F5DD6 /* MLXVLM */; };
+		032A08AE2F22B576008F5DD6 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08AD2F22B576008F5DD6 /* MLXEmbedders */; };
+		032A08B02F22B576008F5DD6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08AF2F22B576008F5DD6 /* MLXLLM */; };
+		032A08B22F22B576008F5DD6 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08B12F22B576008F5DD6 /* MLXLMCommon */; };
+		032A08B42F22B576008F5DD6 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08B32F22B576008F5DD6 /* MLXVLM */; };
+		032A08B72F22B986008F5DD6 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08B62F22B986008F5DD6 /* MLXEmbedders */; };
+		032A08B92F22B986008F5DD6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08B82F22B986008F5DD6 /* MLXLLM */; };
+		032A08BB2F22B986008F5DD6 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08BA2F22B986008F5DD6 /* MLXLMCommon */; };
+		032A08BD2F22B986008F5DD6 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08BC2F22B986008F5DD6 /* MLXVLM */; };
+		032A08C02F22BA23008F5DD6 /* Kokoro in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08BF2F22BA23008F5DD6 /* Kokoro */; };
+		032A08C22F22BA23008F5DD6 /* MLXAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 032A08C12F22BA23008F5DD6 /* MLXAudio */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -43,10 +57,24 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				92D6AB022EE0204C0062E6A9 /* MLXAudio in Frameworks */,
-				92D6AB042EE0204C0062E6AA /* Kokoro in Frameworks */,
-				0A6ECD582E6C2CE300837C54 /* MLXLLM in Frameworks */,
-				0A6ECD5A2E6C2CE300837C54 /* MLXLMCommon in Frameworks */,
+				032A08B02F22B576008F5DD6 /* MLXLLM in Frameworks */,
+				032A08AB2F22B45E008F5DD6 /* MLXVLM in Frameworks */,
+				032A08A02F22B387008F5DD6 /* MLXLMCommon in Frameworks */,
+				032A089E2F22B387008F5DD6 /* MLXLLM in Frameworks */,
+				032A08BB2F22B986008F5DD6 /* MLXLMCommon in Frameworks */,
+				032A08C02F22BA23008F5DD6 /* Kokoro in Frameworks */,
+				032A08A22F22B387008F5DD6 /* MLXVLM in Frameworks */,
+				032A08A52F22B45E008F5DD6 /* MLXEmbedders in Frameworks */,
+				032A08A92F22B45E008F5DD6 /* MLXLMCommon in Frameworks */,
+				032A08AE2F22B576008F5DD6 /* MLXEmbedders in Frameworks */,
+				032A08A72F22B45E008F5DD6 /* MLXLLM in Frameworks */,
+				032A08B42F22B576008F5DD6 /* MLXVLM in Frameworks */,
+				032A08B92F22B986008F5DD6 /* MLXLLM in Frameworks */,
+				032A08C22F22BA23008F5DD6 /* MLXAudio in Frameworks */,
+				032A08BD2F22B986008F5DD6 /* MLXVLM in Frameworks */,
+				032A089C2F22B387008F5DD6 /* MLXEmbedders in Frameworks */,
+				032A08B22F22B576008F5DD6 /* MLXLMCommon in Frameworks */,
+				032A08B72F22B986008F5DD6 /* MLXEmbedders in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,10 +118,24 @@
 			);
 			name = "TTS App";
 			packageProductDependencies = (
-				92D6AB032EE0204C0062E6A9 /* MLXAudio */,
-				92D6AB052EE0204C0062E6AB /* Kokoro */,
-				0A6ECD572E6C2CE300837C54 /* MLXLLM */,
-				0A6ECD592E6C2CE300837C54 /* MLXLMCommon */,
+				032A089B2F22B387008F5DD6 /* MLXEmbedders */,
+				032A089D2F22B387008F5DD6 /* MLXLLM */,
+				032A089F2F22B387008F5DD6 /* MLXLMCommon */,
+				032A08A12F22B387008F5DD6 /* MLXVLM */,
+				032A08A42F22B45E008F5DD6 /* MLXEmbedders */,
+				032A08A62F22B45E008F5DD6 /* MLXLLM */,
+				032A08A82F22B45E008F5DD6 /* MLXLMCommon */,
+				032A08AA2F22B45E008F5DD6 /* MLXVLM */,
+				032A08AD2F22B576008F5DD6 /* MLXEmbedders */,
+				032A08AF2F22B576008F5DD6 /* MLXLLM */,
+				032A08B12F22B576008F5DD6 /* MLXLMCommon */,
+				032A08B32F22B576008F5DD6 /* MLXVLM */,
+				032A08B62F22B986008F5DD6 /* MLXEmbedders */,
+				032A08B82F22B986008F5DD6 /* MLXLLM */,
+				032A08BA2F22B986008F5DD6 /* MLXLMCommon */,
+				032A08BC2F22B986008F5DD6 /* MLXVLM */,
+				032A08BF2F22BA23008F5DD6 /* Kokoro */,
+				032A08C12F22BA23008F5DD6 /* MLXAudio */,
 			);
 			productName = "TTS App";
 			productReference = 26942CF62DABD3B400B82507 /* TTS App.app */;
@@ -124,8 +166,8 @@
 			mainGroup = 26942CED2DABD3B400B82507;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
-				92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */,
+				032A08B52F22B986008F5DD6 /* XCLocalSwiftPackageReference "../../../mlx-swift-lm" */,
+				032A08BE2F22BA23008F5DD6 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-git" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 26942CF72DABD3B400B82507 /* Products */;
@@ -291,7 +333,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = TA92TEWDS4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
@@ -321,7 +363,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.TTSApp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sdesai.TTSApp;
 				PRODUCT_NAME = "TTS App";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
@@ -343,7 +385,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = U7C369GXDA;
+				DEVELOPMENT_TEAM = TA92TEWDS4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
@@ -373,7 +415,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.TTSApp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sdesai.TTSApp;
 				PRODUCT_NAME = "TTS App";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
@@ -407,43 +449,88 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */ = {
+		032A08B52F22B986008F5DD6 /* XCLocalSwiftPackageReference "../../../mlx-swift-lm" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../../../mlx-swift-audio";
+			relativePath = "../../../mlx-swift-lm";
+		};
+		032A08BE2F22BA23008F5DD6 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-git" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../../mlx-swift-audio-git";
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
-		0A6ECD572E6C2CE300837C54 /* MLXLLM */ = {
+		032A089B2F22B387008F5DD6 /* MLXEmbedders */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXEmbedders;
+		};
+		032A089D2F22B387008F5DD6 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
 			productName = MLXLLM;
 		};
-		0A6ECD592E6C2CE300837C54 /* MLXLMCommon */ = {
+		032A089F2F22B387008F5DD6 /* MLXLMCommon */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
 		};
-		92D6AB032EE0204C0062E6A9 /* MLXAudio */ = {
+		032A08A12F22B387008F5DD6 /* MLXVLM */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */;
-			productName = MLXAudio;
+			productName = MLXVLM;
 		};
-		92D6AB052EE0204C0062E6AB /* Kokoro */ = {
+		032A08A42F22B45E008F5DD6 /* MLXEmbedders */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 92D6AB012EE0204C0062E6A8 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio" */;
+			productName = MLXEmbedders;
+		};
+		032A08A62F22B45E008F5DD6 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLLM;
+		};
+		032A08A82F22B45E008F5DD6 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLMCommon;
+		};
+		032A08AA2F22B45E008F5DD6 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXVLM;
+		};
+		032A08AD2F22B576008F5DD6 /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXEmbedders;
+		};
+		032A08AF2F22B576008F5DD6 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLLM;
+		};
+		032A08B12F22B576008F5DD6 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLMCommon;
+		};
+		032A08B32F22B576008F5DD6 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXVLM;
+		};
+		032A08B62F22B986008F5DD6 /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXEmbedders;
+		};
+		032A08B82F22B986008F5DD6 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLLM;
+		};
+		032A08BA2F22B986008F5DD6 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLMCommon;
+		};
+		032A08BC2F22B986008F5DD6 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXVLM;
+		};
+		032A08BF2F22BA23008F5DD6 /* Kokoro */ = {
+			isa = XCSwiftPackageProductDependency;
 			productName = Kokoro;
+		};
+		032A08C12F22BA23008F5DD6 /* MLXAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

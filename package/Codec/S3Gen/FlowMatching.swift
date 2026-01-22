@@ -236,6 +236,7 @@ class CausalConditionalCFM: ConditionalCFM {
   ///
   /// - Parameters:
   ///   - streaming: Unused, kept for API compatibility with flow.py
+  ///   - meanflow: Use meanflow mode (basic Euler without CFG) for Turbo models
   /// - Returns: Tuple of (generated_mel, nil)
   func callAsFunction(
     mu: MLXArray,
@@ -245,21 +246,68 @@ class CausalConditionalCFM: ConditionalCFM {
     spks: MLXArray? = nil,
     cond: MLXArray? = nil,
     streaming _: Bool = false,
+    meanflow: Bool = false,
   ) -> (MLXArray, MLXArray?) {
     let T = mu.shape[2]
     let z = _randNoise[0..., 0..., 0 ..< T] * temperature
 
-    // Time span
+    // Time span - meanflow uses linear, otherwise cosine scheduling
     var tSpan = MLX.linspace(Float32(0), Float32(1), count: nTimesteps + 1)
-    if tScheduler == "cosine" {
+    if !meanflow && tScheduler == "cosine" {
       tSpan = 1 - MLX.cos(tSpan * 0.5 * Float.pi)
     }
 
-    let result = solveEulerCausal(z: z, tSpan: tSpan, mu: mu, mask: mask, spks: spks, cond: cond)
+    // Use basic Euler for meanflow (distilled models don't need CFG)
+    let result: MLXArray
+    if meanflow {
+      result = solveEulerBasic(z: z, tSpan: tSpan, mu: mu, mask: mask, spks: spks, cond: cond)
+    } else {
+      result = solveEulerCausal(z: z, tSpan: tSpan, mu: mu, mask: mask, spks: spks, cond: cond)
+    }
+
     return (result, nil)
   }
 
-  /// Euler solver for causal CFM
+  /// Basic Euler solver without CFG (for meanflow distilled models like Turbo)
+  private func solveEulerBasic(
+    z: MLXArray,
+    tSpan: MLXArray,
+    mu: MLXArray,
+    mask: MLXArray,
+    spks: MLXArray?,
+    cond: MLXArray?,
+  ) -> MLXArray {
+    guard let estimator = estimatorModule else {
+      fatalError("Estimator not set")
+    }
+
+    var x = z
+    let numSteps = tSpan.shape[0]
+
+    for step in 0 ..< (numSteps - 1) {
+      let t = tSpan[step].expandedDimensions(axis: 0)
+      let r = tSpan[step + 1].expandedDimensions(axis: 0)
+
+      // Forward estimator (single pass, no CFG duplication)
+      let dphiDt = estimator(
+        x: x,
+        mask: mask,
+        mu: mu,
+        t: t,
+        spks: spks,
+        cond: cond,
+        r: r,
+      )
+
+      // Euler step
+      let dt = r - t
+      x = x + dt * dphiDt
+    }
+
+    return x
+  }
+
+  /// Euler solver for causal CFM with CFG
   private func solveEulerCausal(
     z: MLXArray,
     tSpan: MLXArray,
