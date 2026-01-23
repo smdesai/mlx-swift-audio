@@ -71,7 +71,8 @@ public final class MarvisEngine: TTSEngine {
   // MARK: - TTSEngine Protocol Properties
 
   public let provider: TTSProvider = .marvis
-  public let streamingGranularity: StreamingGranularity = .frame
+  public let supportedStreamingGranularities: Set<StreamingGranularity> = [.frame]
+  public let defaultStreamingGranularity: StreamingGranularity = .frame
   public private(set) var isLoaded: Bool = false
   public private(set) var isGenerating: Bool = false
   public private(set) var isPlaying: Bool = false

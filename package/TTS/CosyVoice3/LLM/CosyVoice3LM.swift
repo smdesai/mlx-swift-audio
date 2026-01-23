@@ -429,8 +429,13 @@ class CosyVoice3LM: Module {
     return outTokens
   }
 
-  /// Streaming inference - yields tokens one by one
-  func inferenceStream(
+  /// Streaming inference - yields tokens one by one as an AsyncStream
+  ///
+  /// This is the true streaming interface that yields tokens as they're generated,
+  /// enabling chunked audio generation with lower latency.
+  ///
+  /// Uses the pull-based (unfolding) pattern for proper async token generation.
+  func inferenceStreamAsync(
     text: MLXArray,
     textLen: MLXArray,
     promptText: MLXArray,
@@ -441,7 +446,7 @@ class CosyVoice3LM: Module {
     sampling: Int = 25,
     maxTokenTextRatio: Float = 20,
     minTokenTextRatio: Float = 2
-  ) throws -> AnySequence<Int> {
+  ) -> AsyncThrowingStream<Int, Error> {
     // Concatenate prompt and input text
     let fullText = MLX.concatenated([promptText, text], axis: 1)
     let fullTextLen = textLen + promptTextLen
@@ -469,54 +474,107 @@ class CosyVoice3LM: Module {
     let minLen = Int(Float(textLenInt - promptTextLenInt) * minTokenTextRatio)
     let maxLen = Int(Float(textLenInt - promptTextLenInt) * maxTokenTextRatio)
 
-    // Return streaming sequence
-    return try AnySequence(inferenceLoopStream(lmInput: lmInput, sampling: sampling, minLen: minLen, maxLen: maxLen))
-  }
+    // Create state for pull-based streaming
+    let state = TokenGeneratorState(
+      lmInput: lmInput,
+      llm: llm,
+      llmDecoder: llmDecoder,
+      speechEmbedding: speechEmbedding,
+      speechTokenSize: speechTokenSize,
+      sampling: sampling,
+      minLen: minLen,
+      maxLen: maxLen
+    )
 
-  /// Core streaming inference loop with KV caching
-  private func inferenceLoopStream(
+    return AsyncThrowingStream { try await state.next() }
+  }
+}
+
+// MARK: - Token Generator State
+
+/// Encapsulates state for pull-based token streaming.
+/// Each call to `next()` generates one token, enabling true async streaming.
+private final class TokenGeneratorState: @unchecked Sendable {
+  private var outTokens: [Int] = []
+  private var cache: [KVCacheSimple]?
+  private var currentInput: MLXArray
+  private var iteration = 0
+  private var finished = false
+
+  private let llm: CosyVoice3Qwen2Encoder
+  private let llmDecoder: Linear
+  private let speechEmbedding: Embedding
+  private let speechTokenSize: Int
+  private let sampling: Int
+  private let minLen: Int
+  private let maxLen: Int
+
+  init(
     lmInput: MLXArray,
+    llm: CosyVoice3Qwen2Encoder,
+    llmDecoder: Linear,
+    speechEmbedding: Embedding,
+    speechTokenSize: Int,
     sampling: Int,
     minLen: Int,
     maxLen: Int
-  ) throws -> [Int] {
-    var outTokens: [Int] = []
-    var cache: [KVCacheSimple]? = nil
-    var currentInput = lmInput
+  ) {
+    currentInput = lmInput
+    self.llm = llm
+    self.llmDecoder = llmDecoder
+    self.speechEmbedding = speechEmbedding
+    self.speechTokenSize = speechTokenSize
+    self.sampling = sampling
+    self.minLen = minLen
+    self.maxLen = maxLen
+  }
 
-    for i in 0 ..< maxLen {
-      // Forward pass
-      let (yPred, newCache) = llm.forwardOneStep(currentInput, cache: cache)
-      cache = newCache
-
-      // Pipeline: start async eval immediately after forward
-      if let c = cache { asyncEval(yPred, c) } else { asyncEval(yPred) }
-
-      // Get logits for last position (forces eval of yPred)
-      let logits = llmDecoder(yPred[0..., yPred.shape[1] - 1, 0...])
-      let logp = MLX.log(MLX.softmax(logits, axis: -1))
-
-      // Sample next token (.item() forces eval)
-      let topIds = try samplingIds(
-        weightedScores: logp.reshaped(-1),
-        decodedTokens: outTokens,
-        sampling: sampling,
-        ignoreEos: i < minLen
-      )
-
-      // Check for any stop token (EOS or any extended vocab token)
-      if topIds >= speechTokenSize {
-        break
-      }
-
-      // Add the token
-      outTokens.append(topIds)
-
-      // Prepare input for next step
-      currentInput = speechEmbedding.weight[topIds].reshaped(1, 1, -1)
+  func next() async throws -> Int? {
+    // Check termination conditions.
+    // Note: Task.isCancelled is checked but ongoing MLX operations cannot be interrupted.
+    // Cancellation takes effect between token generations.
+    guard !finished, iteration < maxLen, !Task.isCancelled else {
+      return nil
     }
 
-    return outTokens
+    // Forward pass
+    let (yPred, newCache) = llm.forwardOneStep(currentInput, cache: cache)
+    cache = newCache
+
+    // Pipeline: start async eval immediately after forward
+    if let c = cache { asyncEval(yPred, c) } else { asyncEval(yPred) }
+
+    // Get logits for last position (forces eval of yPred)
+    let logits = llmDecoder(yPred[0..., yPred.shape[1] - 1, 0...])
+    let logp = MLX.log(MLX.softmax(logits, axis: -1))
+
+    // Sample next token with proper EOS rejection when below min length
+    let topIds = try cosyVoice3SamplingWithEosRejection(
+      logits: logp.reshaped(-1),
+      decodedTokens: outTokens,
+      sampling: sampling,
+      speechTokenSize: speechTokenSize,
+      ignoreEos: iteration < minLen,
+      topP: 0.8,
+      topK: sampling,
+      winSize: 10,
+      tauR: 0.1
+    )
+
+    iteration += 1
+
+    // Check for any stop token (EOS or any extended vocab token)
+    if topIds >= speechTokenSize {
+      finished = true
+      return nil
+    }
+
+    outTokens.append(topIds)
+
+    // Prepare input for next step
+    currentInput = speechEmbedding.weight[topIds].reshaped(1, 1, -1)
+
+    return topIds
   }
 }
 
@@ -592,6 +650,47 @@ func cosyVoice3TopKSampling(logits: MLXArray, decodedTokens _: [Int], topK: Int 
   let idx = MLXRandom.categorical(MLX.log(probs))
 
   return Int(topKIndices[idx].item(Int32.self))
+}
+
+/// Sample token IDs with optional EOS rejection (standalone version for async contexts)
+///
+/// When `ignoreEos` is true and a stop token (>= speechTokenSize) is sampled,
+/// the function retries sampling up to `maxTrials` times until a valid speech token is found.
+func cosyVoice3SamplingWithEosRejection(
+  logits: MLXArray,
+  decodedTokens: [Int],
+  sampling: Int,
+  speechTokenSize: Int,
+  ignoreEos: Bool,
+  topP: Float = 0.8,
+  topK: Int = 25,
+  winSize: Int = 10,
+  tauR: Float = 0.1,
+  maxTrials: Int = 100
+) throws -> Int {
+  var numTrials = 0
+
+  while true {
+    let topIds = cosyVoice3RasSampling(
+      logits: logits,
+      decodedTokens: decodedTokens,
+      sampling: sampling,
+      topP: topP,
+      topK: topK,
+      winSize: winSize,
+      tauR: tauR
+    )
+
+    // If not ignoring EOS, or sampled token is valid speech token, accept it
+    if !ignoreEos || topIds < speechTokenSize {
+      return topIds
+    }
+
+    numTrials += 1
+    if numTrials > maxTrials {
+      throw CosyVoice3Error.maxSamplingTrialsExceeded
+    }
+  }
 }
 
 // MARK: - Error Types

@@ -58,7 +58,8 @@ public final class ChatterboxEngine: TTSEngine {
   // MARK: - TTSEngine Protocol Properties
 
   public let provider: TTSProvider = .chatterbox
-  public let streamingGranularity: StreamingGranularity = .sentence
+  public let supportedStreamingGranularities: Set<StreamingGranularity> = [.sentence]
+  public let defaultStreamingGranularity: StreamingGranularity = .sentence
   public private(set) var isLoaded: Bool = false
   public private(set) var isGenerating: Bool = false
   public private(set) var isPlaying: Bool = false
@@ -428,20 +429,17 @@ public final class ChatterboxEngine: TTSEngine {
       }
 
       // Prepare reference audio if needed
-      let ref: ChatterboxReferenceAudio
-      if let referenceAudio {
-        ref = referenceAudio
-      } else {
-        if defaultReferenceAudio == nil {
-          defaultReferenceAudio = try await prepareDefaultReferenceAudio(exaggeration: currentExaggeration)
-        }
-        ref = defaultReferenceAudio!
+      if referenceAudio == nil, defaultReferenceAudio == nil {
+        defaultReferenceAudio = try await prepareDefaultReferenceAudio(exaggeration: currentExaggeration)
+      }
+      guard let referenceAudio = referenceAudio ?? defaultReferenceAudio else {
+        throw TTSError.modelNotLoaded
       }
 
       // Wrap model stream to convert [Float] -> AudioChunk
       let modelStream = await chatterboxTTS.generateStreaming(
         text: trimmedText,
-        conditionals: ref.conditionals,
+        conditionals: referenceAudio.conditionals,
         exaggeration: currentExaggeration,
         cfgWeight: currentCfgWeight,
         temperature: currentTemperature,

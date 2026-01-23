@@ -269,9 +269,11 @@ actor CosyVoice3TTS {
     )
 
     // Create PreLookaheadLayer
+    // Note: channels should be dit.dim (1024), matching Python's build_flow_model
+    // which uses: PreLookaheadLayer(input_size, dit_dim, pre_lookahead_len)
     let preLookahead = CosyVoice3PreLookaheadLayer(
       inChannels: config.flow.inputSize,
-      channels: config.flow.preLookaheadChannels,
+      channels: config.flow.dit.dim,
       preLookaheadLen: config.flow.preLookaheadLen
     )
 
@@ -548,6 +550,107 @@ actor CosyVoice3TTS {
       sampleRate: Self.outputSampleRate,
       processingTime: processingTime
     )
+  }
+
+  // MARK: - Streaming Generation
+
+  /// Generate audio stream using zero-shot mode (with reference transcription)
+  ///
+  /// Yields audio chunks as tokens are generated, enabling lower-latency playback.
+  ///
+  /// - Parameters:
+  ///   - textTokens: Pre-tokenized text
+  ///   - conditionals: Pre-computed conditionals (must include promptText)
+  ///   - sampling: Top-k sampling parameter (default: 25)
+  ///   - nTimesteps: Number of flow matching steps (default: 10)
+  ///   - chunkSize: Number of tokens per audio chunk (default: 25, must match training)
+  /// - Returns: AsyncThrowingStream of audio samples as [Float]
+  func generateZeroShotStreaming(
+    textTokens: [Int],
+    conditionals: CosyVoice3Conditionals,
+    sampling: Int = 25,
+    nTimesteps: Int = 10,
+    chunkSize: Int = 25
+  ) -> AsyncThrowingStream<[Float], Error> {
+    guard let promptText = conditionals.promptText,
+          let promptTextLen = conditionals.promptTextLen
+    else {
+      return AsyncThrowingStream { continuation in
+        continuation.finish(throwing: CosyVoice3Error.invalidInput("Zero-shot mode requires reference text in conditionals"))
+      }
+    }
+
+    let textArray = MLXArray(textTokens.map { Int32($0) }).reshaped(1, -1)
+    let textLen = MLXArray([Int32(textTokens.count)])
+
+    let modelStream = model.synthesizeStreaming(
+      text: textArray,
+      textLen: textLen,
+      promptText: promptText,
+      promptTextLen: promptTextLen,
+      promptSpeechToken: conditionals.promptSpeechToken,
+      promptSpeechTokenLen: conditionals.promptSpeechTokenLen,
+      promptMel: conditionals.promptMel,
+      promptMelLen: conditionals.promptMelLen,
+      speakerEmbedding: conditionals.speakerEmbedding,
+      sampling: sampling,
+      nTimesteps: nTimesteps,
+      chunkSize: chunkSize
+    )
+
+    return transformMLXStreamToFloatStream(modelStream)
+  }
+
+  /// Generate audio stream using cross-lingual mode (no reference transcription)
+  ///
+  /// Yields audio chunks as tokens are generated, enabling lower-latency playback.
+  ///
+  /// - Parameters:
+  ///   - textTokens: Pre-tokenized text
+  ///   - conditionals: Pre-computed conditionals
+  ///   - sampling: Top-k sampling parameter (default: 25)
+  ///   - nTimesteps: Number of flow matching steps (default: 10)
+  ///   - chunkSize: Number of tokens per audio chunk (default: 25, must match training)
+  /// - Returns: AsyncThrowingStream of audio samples as [Float]
+  func generateCrossLingualStreaming(
+    textTokens: [Int],
+    conditionals: CosyVoice3Conditionals,
+    sampling: Int = 25,
+    nTimesteps: Int = 10,
+    chunkSize: Int = 25
+  ) -> AsyncThrowingStream<[Float], Error> {
+    let textArray = MLXArray(textTokens.map { Int32($0) }).reshaped(1, -1)
+    let textLen = MLXArray([Int32(textTokens.count)])
+
+    // Cross-lingual mode: empty prompt text
+    let emptyPromptText = MLXArray.zeros([1, 0], dtype: .int32)
+    let emptyPromptTextLen = MLXArray([Int32(0)])
+
+    let modelStream = model.synthesizeStreaming(
+      text: textArray,
+      textLen: textLen,
+      promptText: emptyPromptText,
+      promptTextLen: emptyPromptTextLen,
+      promptSpeechToken: conditionals.promptSpeechToken,
+      promptSpeechTokenLen: conditionals.promptSpeechTokenLen,
+      promptMel: conditionals.promptMel,
+      promptMelLen: conditionals.promptMelLen,
+      speakerEmbedding: conditionals.speakerEmbedding,
+      sampling: sampling,
+      nTimesteps: nTimesteps,
+      chunkSize: chunkSize
+    )
+
+    return transformMLXStreamToFloatStream(modelStream)
+  }
+
+  /// Transform an MLXArray stream to a Float array stream
+  private func transformMLXStreamToFloatStream(
+    _ stream: AsyncThrowingStream<MLXArray, Error>
+  ) -> AsyncThrowingStream<[Float], Error> {
+    mapAsyncStream(stream) { chunk in
+      chunk.asArray(Float.self)
+    }
   }
 
   // MARK: - Voice Conversion Source Audio

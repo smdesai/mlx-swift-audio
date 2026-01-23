@@ -15,8 +15,29 @@ public protocol TTSEngine: Observable {
   /// The provider type for this engine
   var provider: TTSProvider { get }
 
-  /// The granularity at which this engine streams audio
-  var streamingGranularity: StreamingGranularity { get }
+  /// The streaming granularities this engine supports.
+  ///
+  /// Most engines support at least `.sentence`. Some engines support multiple
+  /// granularities - use `defaultStreamingGranularity` to get the recommended mode,
+  /// or choose based on your latency requirements.
+  ///
+  /// For engines that support multiple granularities (like CosyVoice3), you can
+  /// specify the desired granularity via a parameter:
+  ///
+  /// ```swift
+  /// // Use the engine's default granularity
+  /// for try await chunk in engine.generateStreaming(text) { ... }
+  ///
+  /// // Request a specific granularity (if supported)
+  /// for try await chunk in engine.generateStreaming(text, granularity: .token) { ... }
+  /// ```
+  var supportedStreamingGranularities: Set<StreamingGranularity> { get }
+
+  /// The recommended default streaming granularity for this engine.
+  ///
+  /// This is typically the most reliable or highest-quality streaming mode.
+  /// For lower latency, check if `.token` or `.frame` is in `supportedStreamingGranularities`.
+  var defaultStreamingGranularity: StreamingGranularity { get }
 
   // MARK: - State Properties
 
@@ -118,14 +139,23 @@ public enum TTS {
 }
 
 /// Describes how an engine streams audio output
-public enum StreamingGranularity: Sendable {
+///
+/// Engines may support multiple granularities. Check `supportedStreamingGranularities`
+/// to see what an engine supports, and `defaultStreamingGranularity` for the recommended mode.
+public enum StreamingGranularity: Sendable, Hashable, CaseIterable {
   /// Audio is streamed sentence-by-sentence. Each chunk contains a complete sentence.
-  /// Higher latency per chunk, but natural break points.
+  /// Higher latency to first audio (~1-3s), but natural break points.
+  /// Most engines support this mode.
   case sentence
 
-  /// Audio is streamed frame-by-frame at regular intervals.
-  /// Lower latency, continuous output.
+  /// Audio is streamed frame-by-frame at regular time intervals.
+  /// Lower latency, continuous output based on elapsed time.
   case frame
+
+  /// Audio is streamed token-by-token as speech tokens are generated.
+  /// Low latency (~0.5-1s to first audio), chunks based on token count.
+  /// Useful for real-time applications where responsiveness matters.
+  case token
 
   /// Human-readable description for UI display
   public var description: String {
@@ -134,6 +164,8 @@ public enum StreamingGranularity: Sendable {
         "Sentence-by-sentence"
       case .frame:
         "Frame-by-frame"
+      case .token:
+        "Token-by-token"
     }
   }
 
@@ -144,6 +176,18 @@ public enum StreamingGranularity: Sendable {
         "Per sentence"
       case .frame:
         "Continuous"
+      case .token:
+        "Low latency"
+    }
+  }
+
+  /// Relative latency indicator for time-to-first-audio.
+  /// Values are ordinal (1=fastest, 3=slowest), not milliseconds.
+  public var relativeLatency: Int {
+    switch self {
+      case .token: 1
+      case .frame: 2
+      case .sentence: 3
     }
   }
 }

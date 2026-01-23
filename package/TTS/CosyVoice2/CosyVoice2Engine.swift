@@ -83,7 +83,8 @@ public final class CosyVoice2Engine: TTSEngine {
   // MARK: - TTSEngine Protocol Properties
 
   public let provider: TTSProvider = .cosyVoice2
-  public let streamingGranularity: StreamingGranularity = .sentence
+  public let supportedStreamingGranularities: Set<StreamingGranularity> = [.sentence]
+  public let defaultStreamingGranularity: StreamingGranularity = .sentence
   public private(set) var isLoaded: Bool = false
   public private(set) var isGenerating: Bool = false
   public private(set) var isPlaying: Bool = false
@@ -646,14 +647,11 @@ public final class CosyVoice2Engine: TTSEngine {
     }
 
     // Prepare speaker if needed
-    let spk: CosyVoice2Speaker
-    if let speaker {
-      spk = speaker
-    } else {
-      if defaultSpeaker == nil {
-        defaultSpeaker = try await prepareDefaultSpeaker()
-      }
-      spk = defaultSpeaker!
+    if speaker == nil, defaultSpeaker == nil {
+      defaultSpeaker = try await prepareDefaultSpeaker()
+    }
+    guard let speaker = speaker ?? defaultSpeaker else {
+      throw TTSError.modelNotLoaded
     }
 
     // Tokenize input text
@@ -673,7 +671,7 @@ public final class CosyVoice2Engine: TTSEngine {
         text: text,
         textTokens: textTokens,
         instructText: instruction,
-        conditionals: spk.conditionals,
+        conditionals: speaker.conditionals,
         sampling: sampling,
         nTimesteps: nTimesteps
       )
@@ -681,12 +679,12 @@ public final class CosyVoice2Engine: TTSEngine {
       throw TTSError.invalidArgument(
         "Voice conversion requires source audio. Use convertVoice(from:to:) instead."
       )
-    } else if spk.hasTranscription, generationMode != .crossLingual {
+    } else if speaker.hasTranscription, generationMode != .crossLingual {
       // Zero-shot mode (speaker has transcription)
       result = try await cosyVoice2TTS.generateZeroShot(
         text: text,
         textTokens: textTokens,
-        conditionals: spk.conditionals,
+        conditionals: speaker.conditionals,
         sampling: sampling,
         nTimesteps: nTimesteps
       )
@@ -695,7 +693,7 @@ public final class CosyVoice2Engine: TTSEngine {
       result = try await cosyVoice2TTS.generateCrossLingual(
         text: text,
         textTokens: textTokens,
-        conditionals: spk.conditionals,
+        conditionals: speaker.conditionals,
         sampling: sampling,
         nTimesteps: nTimesteps
       )
@@ -778,18 +776,15 @@ public final class CosyVoice2Engine: TTSEngine {
     )
 
     // Prepare speaker if needed
-    let spk: CosyVoice2Speaker
-    if let speaker {
-      spk = speaker
-    } else {
-      if defaultSpeaker == nil {
-        defaultSpeaker = try await prepareDefaultSpeaker()
-      }
-      spk = defaultSpeaker!
+    if speaker == nil, defaultSpeaker == nil {
+      defaultSpeaker = try await prepareDefaultSpeaker()
+    }
+    guard let speaker = speaker ?? defaultSpeaker else {
+      throw TTSError.modelNotLoaded
     }
 
     let result = try await cosyVoice2TTS.generateVoiceConversionFromPrepared(
-      conditionals: spk.conditionals,
+      conditionals: speaker.conditionals,
       nTimesteps: nTimesteps
     )
 
@@ -882,18 +877,15 @@ public final class CosyVoice2Engine: TTSEngine {
     }
 
     // Prepare speaker if needed
-    let spk: CosyVoice2Speaker
-    if let speaker {
-      spk = speaker
-    } else {
-      if defaultSpeaker == nil {
-        defaultSpeaker = try await prepareDefaultSpeaker()
-      }
-      spk = defaultSpeaker!
+    if speaker == nil, defaultSpeaker == nil {
+      defaultSpeaker = try await prepareDefaultSpeaker()
+    }
+    guard let speaker = speaker ?? defaultSpeaker else {
+      throw TTSError.modelNotLoaded
     }
 
     let result = try await cosyVoice2TTS.generateVoiceConversionFromPrepared(
-      conditionals: spk.conditionals,
+      conditionals: speaker.conditionals,
       nTimesteps: nTimesteps
     )
 
@@ -952,14 +944,11 @@ public final class CosyVoice2Engine: TTSEngine {
       }
 
       // Prepare speaker if needed
-      let spk: CosyVoice2Speaker
-      if let speaker {
-        spk = speaker
-      } else {
-        if defaultSpeaker == nil {
-          defaultSpeaker = try await prepareDefaultSpeaker()
-        }
-        spk = defaultSpeaker!
+      if speaker == nil, defaultSpeaker == nil {
+        defaultSpeaker = try await prepareDefaultSpeaker()
+      }
+      guard let speaker = speaker ?? defaultSpeaker else {
+        throw TTSError.modelNotLoaded
       }
 
       // Split text into sentences for streaming
@@ -973,13 +962,13 @@ public final class CosyVoice2Engine: TTSEngine {
               guard !Task.isCancelled else { break }
 
               let textTokens = await cosyVoice2TTS.encode(text: sentence)
-              let useZeroShot = spk.hasTranscription && currentGenerationMode != .crossLingual
+              let useZeroShot = speaker.hasTranscription && currentGenerationMode != .crossLingual
 
               let result: TTSGenerationResult = if useZeroShot {
                 try await cosyVoice2TTS.generateZeroShot(
                   text: sentence,
                   textTokens: textTokens,
-                  conditionals: spk.conditionals,
+                  conditionals: speaker.conditionals,
                   sampling: currentSampling,
                   nTimesteps: currentNTimesteps
                 )
@@ -987,7 +976,7 @@ public final class CosyVoice2Engine: TTSEngine {
                 try await cosyVoice2TTS.generateCrossLingual(
                   text: sentence,
                   textTokens: textTokens,
-                  conditionals: spk.conditionals,
+                  conditionals: speaker.conditionals,
                   sampling: currentSampling,
                   nTimesteps: currentNTimesteps
                 )

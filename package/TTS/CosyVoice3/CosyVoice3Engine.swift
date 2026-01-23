@@ -83,7 +83,8 @@ public final class CosyVoice3Engine: TTSEngine {
   // MARK: - TTSEngine Protocol Properties
 
   public let provider: TTSProvider = .cosyVoice3
-  public let streamingGranularity: StreamingGranularity = .sentence
+  public let supportedStreamingGranularities: Set<StreamingGranularity> = [.sentence, .token]
+  public let defaultStreamingGranularity: StreamingGranularity = .token
   public private(set) var isLoaded: Bool = false
   public private(set) var isGenerating: Bool = false
   public private(set) var isPlaying: Bool = false
@@ -146,7 +147,7 @@ public final class CosyVoice3Engine: TTSEngine {
   @ObservationIgnored private var cosyVoice3TTS: CosyVoice3TTS?
   @ObservationIgnored private var s3Tokenizer: S3TokenizerV3?
   @ObservationIgnored private var whisperSTT: WhisperSTT?
-  @ObservationIgnored private let playback = TTSPlaybackController(sampleRate: 24000)
+  @ObservationIgnored private let playback = TTSPlaybackController(sampleRate: CosyVoice3Constants.sampleRate)
   @ObservationIgnored private var defaultSpeaker: CosyVoice3Speaker?
   @ObservationIgnored private var cachedSourceAudioURL: URL?
 
@@ -364,8 +365,8 @@ public final class CosyVoice3Engine: TTSEngine {
   ) async throws -> CosyVoice3Speaker {
     Log.tts.debug("Preparing speaker: \(baseDescription)")
 
-    // Resample to 24kHz if needed
-    let targetSampleRate = 24000
+    // Resample to model's output sample rate if needed
+    let targetSampleRate = CosyVoice3Constants.sampleRate
     var processedSamples: [Float] = if sampleRate != targetSampleRate {
       resampleAudio(samples, fromRate: sampleRate, toRate: targetSampleRate)
     } else {
@@ -578,14 +579,11 @@ public final class CosyVoice3Engine: TTSEngine {
     }
 
     // Prepare speaker if needed
-    let spk: CosyVoice3Speaker
-    if let speaker {
-      spk = speaker
-    } else {
-      if defaultSpeaker == nil {
-        defaultSpeaker = try await prepareDefaultSpeaker()
-      }
-      spk = defaultSpeaker!
+    if speaker == nil, defaultSpeaker == nil {
+      defaultSpeaker = try await prepareDefaultSpeaker()
+    }
+    guard let speaker = speaker ?? defaultSpeaker else {
+      throw TTSError.modelNotLoaded
     }
 
     // Tokenize input text
@@ -604,7 +602,7 @@ public final class CosyVoice3Engine: TTSEngine {
         text: text,
         textTokens: textTokens,
         instructText: instruction,
-        conditionals: spk.conditionals,
+        conditionals: speaker.conditionals,
         sampling: sampling,
         nTimesteps: nTimesteps
       )
@@ -612,12 +610,12 @@ public final class CosyVoice3Engine: TTSEngine {
       throw TTSError.invalidArgument(
         "Voice conversion requires source audio. Use convertVoice(from:to:) instead."
       )
-    } else if spk.hasTranscription, generationMode != .crossLingual {
+    } else if speaker.hasTranscription, generationMode != .crossLingual {
       // Zero-shot mode
       result = try await cosyVoice3TTS.generateZeroShot(
         text: text,
         textTokens: textTokens,
-        conditionals: spk.conditionals,
+        conditionals: speaker.conditionals,
         sampling: sampling,
         nTimesteps: nTimesteps
       )
@@ -626,7 +624,7 @@ public final class CosyVoice3Engine: TTSEngine {
       result = try await cosyVoice3TTS.generateCrossLingual(
         text: text,
         textTokens: textTokens,
-        conditionals: spk.conditionals,
+        conditionals: speaker.conditionals,
         sampling: sampling,
         nTimesteps: nTimesteps
       )
@@ -677,7 +675,7 @@ public final class CosyVoice3Engine: TTSEngine {
 
     let (samples, sampleRate) = try await loadAudioSamples(from: sourceURL)
 
-    let targetSampleRate = 24000
+    let targetSampleRate = CosyVoice3Constants.sampleRate
     let resampledSamples: [Float] = if sampleRate != targetSampleRate {
       resampleAudio(samples, fromRate: sampleRate, toRate: targetSampleRate)
     } else {
@@ -693,18 +691,15 @@ public final class CosyVoice3Engine: TTSEngine {
       s3Tokenizer: { mel, melLen in tokenizerUnsafe(mel, melLen: melLen) }
     )
 
-    let spk: CosyVoice3Speaker
-    if let speaker {
-      spk = speaker
-    } else {
-      if defaultSpeaker == nil {
-        defaultSpeaker = try await prepareDefaultSpeaker()
-      }
-      spk = defaultSpeaker!
+    if speaker == nil, defaultSpeaker == nil {
+      defaultSpeaker = try await prepareDefaultSpeaker()
+    }
+    guard let speaker = speaker ?? defaultSpeaker else {
+      throw TTSError.modelNotLoaded
     }
 
     let result = try await cosyVoice3TTS.generateVoiceConversionFromPrepared(
-      conditionals: spk.conditionals,
+      conditionals: speaker.conditionals,
       nTimesteps: nTimesteps
     )
 
@@ -758,9 +753,95 @@ public final class CosyVoice3Engine: TTSEngine {
   // MARK: - Streaming
 
   /// Generate audio as a stream of chunks
+  ///
+  /// Supports multiple streaming granularities:
+  /// - `.token` (default): Low-latency streaming that yields audio as speech tokens are generated.
+  ///   Each chunk contains audio for approximately `chunkSize` tokens.
+  /// - `.sentence`: Higher-latency streaming that yields complete sentences.
+  ///   More natural break points but slower time to first audio.
+  ///
+  /// - Parameters:
+  ///   - text: The text to synthesize
+  ///   - speaker: Prepared speaker profile (if nil, uses default)
+  ///   - granularity: Streaming granularity (if nil, uses `defaultStreamingGranularity`)
+  ///   - chunkSize: Number of tokens per audio chunk (only used for `.token` granularity, default: 20).
+  ///     Smaller values give faster time-to-first-audio but more processing overhead.
+  ///     Each token produces ~0.08s of audio (at tokenMelRatio=2, 25Hz mel rate).
+  /// - Returns: An async stream of audio chunks
+  /// - Throws: `TTSError.unsupportedStreamingGranularity` if the requested granularity is not supported
   public func generateStreaming(
     _ text: String,
-    speaker: CosyVoice3Speaker? = nil
+    speaker: CosyVoice3Speaker? = nil,
+    granularity: StreamingGranularity? = nil,
+    chunkSize: Int = 20
+  ) -> AsyncThrowingStream<AudioChunk, Error> {
+    let effectiveGranularity = granularity ?? defaultStreamingGranularity
+
+    // Validate granularity is supported
+    guard supportedStreamingGranularities.contains(effectiveGranularity) else {
+      return AsyncThrowingStream { continuation in
+        continuation.finish(throwing: TTSError.unsupportedStreamingGranularity(
+          requested: effectiveGranularity,
+          supported: supportedStreamingGranularities
+        ))
+      }
+    }
+
+    // Validate chunkSize for token-level streaming
+    guard chunkSize > 0 else {
+      return AsyncThrowingStream { continuation in
+        continuation.finish(throwing: TTSError.invalidArgument("chunkSize must be positive"))
+      }
+    }
+
+    switch effectiveGranularity {
+      case .token:
+        return generateStreamingTokenLevel(text, speaker: speaker, chunkSize: chunkSize)
+      case .sentence:
+        return generateStreamingSentenceLevel(text, speaker: speaker)
+      case .frame:
+        // Unreachable: guard above rejects unsupported granularities
+        return generateStreamingSentenceLevel(text, speaker: speaker)
+    }
+  }
+
+  /// Play audio with streaming (plays chunks as they arrive)
+  ///
+  /// - Parameters:
+  ///   - text: The text to synthesize
+  ///   - speaker: Prepared speaker profile (if nil, uses default)
+  ///   - granularity: Streaming granularity (if nil, uses `defaultStreamingGranularity`)
+  ///   - chunkSize: Number of tokens per audio chunk (only used for `.token` granularity, default: 20)
+  /// - Returns: The complete audio result after playback
+  /// - Throws: `TTSError.unsupportedStreamingGranularity` if the requested granularity is not supported
+  @discardableResult
+  public func sayStreaming(
+    _ text: String,
+    speaker: CosyVoice3Speaker? = nil,
+    granularity: StreamingGranularity? = nil,
+    chunkSize: Int = 20
+  ) async throws -> AudioResult {
+    let (samples, processingTime) = try await playback.playStream(
+      generateStreaming(text, speaker: speaker, granularity: granularity, chunkSize: chunkSize),
+      setPlaying: { self.isPlaying = $0 }
+    )
+
+    lastGeneratedAudioURL = playback.saveAudioFile(samples: samples, sampleRate: CosyVoice3Constants.sampleRate)
+
+    return .samples(
+      data: samples,
+      sampleRate: CosyVoice3Constants.sampleRate,
+      processingTime: processingTime
+    )
+  }
+
+  // MARK: - Private Streaming Implementations
+
+  /// Token-level streaming implementation
+  private func generateStreamingTokenLevel(
+    _ text: String,
+    speaker: CosyVoice3Speaker?,
+    chunkSize: Int
   ) -> AsyncThrowingStream<AudioChunk, Error> {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -768,7 +849,7 @@ public final class CosyVoice3Engine: TTSEngine {
       return AsyncThrowingStream { $0.finish(throwing: TTSError.invalidArgument("Text cannot be empty")) }
     }
 
-    let sampleRate = 24000
+    let sampleRate = CosyVoice3Constants.sampleRate
     let currentSampling = sampling
     let currentNTimesteps = nTimesteps
     let currentGenerationMode = generationMode
@@ -789,33 +870,105 @@ public final class CosyVoice3Engine: TTSEngine {
         throw TTSError.modelNotLoaded
       }
 
-      let spk: CosyVoice3Speaker
-      if let speaker {
-        spk = speaker
+      // Prepare speaker if needed
+      if speaker == nil, defaultSpeaker == nil {
+        defaultSpeaker = try await prepareDefaultSpeaker()
+      }
+      guard let speaker = speaker ?? defaultSpeaker else {
+        throw TTSError.modelNotLoaded
+      }
+
+      // Tokenize input text
+      let textTokens = await cosyVoice3TTS.encode(text: trimmedText)
+      let useZeroShot = speaker.hasTranscription && currentGenerationMode != .crossLingual
+
+      // Get the appropriate streaming generator
+      let audioStream: AsyncThrowingStream<[Float], Error> = if useZeroShot {
+        await cosyVoice3TTS.generateZeroShotStreaming(
+          textTokens: textTokens,
+          conditionals: speaker.conditionals,
+          sampling: currentSampling,
+          nTimesteps: currentNTimesteps,
+          chunkSize: chunkSize
+        )
       } else {
-        if defaultSpeaker == nil {
-          defaultSpeaker = try await prepareDefaultSpeaker()
-        }
-        spk = defaultSpeaker!
+        await cosyVoice3TTS.generateCrossLingualStreaming(
+          textTokens: textTokens,
+          conditionals: speaker.conditionals,
+          sampling: currentSampling,
+          nTimesteps: currentNTimesteps,
+          chunkSize: chunkSize
+        )
+      }
+
+      // Transform [Float] stream to AudioChunk stream with timing
+      let startTime = Date()
+      return mapAsyncStream(audioStream) { samples in
+        AudioChunk(
+          samples: samples,
+          sampleRate: sampleRate,
+          processingTime: Date().timeIntervalSince(startTime)
+        )
+      }
+    }
+  }
+
+  /// Sentence-level streaming implementation
+  private func generateStreamingSentenceLevel(
+    _ text: String,
+    speaker: CosyVoice3Speaker?
+  ) -> AsyncThrowingStream<AudioChunk, Error> {
+    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !trimmedText.isEmpty else {
+      return AsyncThrowingStream { $0.finish(throwing: TTSError.invalidArgument("Text cannot be empty")) }
+    }
+
+    let sampleRate = CosyVoice3Constants.sampleRate
+    let currentSampling = sampling
+    let currentNTimesteps = nTimesteps
+    let currentGenerationMode = generationMode
+
+    return playback.createGenerationStream(
+      setGenerating: { self.isGenerating = $0 },
+      setGenerationTime: { self.generationTime = $0 }
+    ) { [weak self] in
+      guard let self else {
+        return AsyncThrowingStream { $0.finish() }
+      }
+
+      if !isLoaded {
+        try await load()
+      }
+
+      guard let cosyVoice3TTS else {
+        throw TTSError.modelNotLoaded
+      }
+
+      if speaker == nil, defaultSpeaker == nil {
+        defaultSpeaker = try await prepareDefaultSpeaker()
+      }
+      guard let speaker = speaker ?? defaultSpeaker else {
+        throw TTSError.modelNotLoaded
       }
 
       let sentences = Self.splitIntoSentences(trimmedText)
 
       let startTime = Date()
       return AsyncThrowingStream { continuation in
-        Task {
+        let task = Task {
           do {
             for sentence in sentences {
               guard !Task.isCancelled else { break }
 
               let textTokens = await cosyVoice3TTS.encode(text: sentence)
-              let useZeroShot = spk.hasTranscription && currentGenerationMode != .crossLingual
+              let useZeroShot = speaker.hasTranscription && currentGenerationMode != .crossLingual
 
               let result: TTSGenerationResult = if useZeroShot {
                 try await cosyVoice3TTS.generateZeroShot(
                   text: sentence,
                   textTokens: textTokens,
-                  conditionals: spk.conditionals,
+                  conditionals: speaker.conditionals,
                   sampling: currentSampling,
                   nTimesteps: currentNTimesteps
                 )
@@ -823,7 +976,7 @@ public final class CosyVoice3Engine: TTSEngine {
                 try await cosyVoice3TTS.generateCrossLingual(
                   text: sentence,
                   textTokens: textTokens,
-                  conditionals: spk.conditionals,
+                  conditionals: speaker.conditionals,
                   sampling: currentSampling,
                   nTimesteps: currentNTimesteps
                 )
@@ -842,6 +995,9 @@ public final class CosyVoice3Engine: TTSEngine {
           } catch {
             continuation.finish(throwing: error)
           }
+        }
+        continuation.onTermination = { _ in
+          task.cancel()
         }
       }
     }
@@ -877,25 +1033,5 @@ public final class CosyVoice3Engine: TTSEngine {
     }
 
     return sentences
-  }
-
-  /// Play audio with streaming
-  @discardableResult
-  public func sayStreaming(
-    _ text: String,
-    speaker: CosyVoice3Speaker? = nil
-  ) async throws -> AudioResult {
-    let (samples, processingTime) = try await playback.playStream(
-      generateStreaming(text, speaker: speaker),
-      setPlaying: { self.isPlaying = $0 }
-    )
-
-    lastGeneratedAudioURL = playback.saveAudioFile(samples: samples, sampleRate: 24000)
-
-    return .samples(
-      data: samples,
-      sampleRate: 24000,
-      processingTime: processingTime
-    )
   }
 }

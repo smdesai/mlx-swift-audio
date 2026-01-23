@@ -7,6 +7,13 @@ import Foundation
 import MLX
 import MLXNN
 
+// MARK: - CosyVoice3 Streaming Constants
+
+/// FSQ silent and breath tokens (from PyTorch CosyVoice3Model)
+/// These are filtered during streaming to avoid excessive pauses
+private let silentTokens: Set<Int> = [1, 2, 28, 29, 55, 248, 494, 2241, 2242, 2322, 2323]
+private let maxSilentTokenNum = 5
+
 // MARK: - CosyVoice3 Main Model
 
 /// CosyVoice3 Text-to-Speech model
@@ -439,6 +446,25 @@ class CosyVoice3Model: Module {
   /// Streaming speech synthesis with chunked output
   ///
   /// Generates audio in chunks as tokens are produced, reducing latency.
+  /// This is the true streaming implementation that yields audio as tokens are generated.
+  ///
+  /// - Parameters:
+  ///   - text: Input text token IDs (1, T)
+  ///   - textLen: Text length (1,)
+  ///   - promptText: Prompt text token IDs (1, T_p)
+  ///   - promptTextLen: Prompt text length (1,)
+  ///   - promptSpeechToken: Prompt speech tokens (1, T_s)
+  ///   - promptSpeechTokenLen: Prompt speech token length (1,)
+  ///   - promptMel: Prompt mel spectrogram (1, T_mel, D)
+  ///   - promptMelLen: Prompt mel length (1,)
+  ///   - speakerEmbedding: Speaker embedding (1, D_spk)
+  ///   - sampling: Top-k sampling parameter
+  ///   - nTimesteps: Number of flow matching steps
+  ///   - chunkSize: Number of tokens per audio chunk (default: 25, must match training)
+  ///   - filterSilentTokens: Whether to filter consecutive silent tokens
+  ///   - maxTokenTextRatio: Maximum speech/text ratio
+  ///   - minTokenTextRatio: Minimum speech/text ratio
+  /// - Returns: AsyncThrowingStream of audio chunks as MLXArray
   func synthesizeStreaming(
     text: MLXArray,
     textLen: MLXArray,
@@ -451,22 +477,19 @@ class CosyVoice3Model: Module {
     speakerEmbedding: MLXArray,
     sampling: Int = 25,
     nTimesteps: Int = 10,
-    chunkSize: Int = 50,
+    chunkSize: Int = 25,
+    filterSilentTokens: Bool = true,
     maxTokenTextRatio: Float = 20.0,
     minTokenTextRatio: Float = 2.0
-  ) throws -> [MLXArray] {
-    guard let flow else {
-      throw CosyVoice3Error.modelNotLoaded
+  ) -> AsyncThrowingStream<MLXArray, Error> {
+    guard let llm, let flow, let hifigan else {
+      return AsyncThrowingStream { continuation in
+        continuation.finish(throwing: CosyVoice3Error.modelNotLoaded)
+      }
     }
 
-    var speechTokens: [Int] = []
-    var audioChunks: [MLXArray] = []
-    var chunkIdx = 0
-    let preLookaheadLen = flow.preLookaheadLen
-    let tokenMelRatio = flow.tokenMelRatio
-
-    // Generate all tokens first (could be made streaming later)
-    speechTokens = try generateTokens(
+    // Get the token stream from LLM
+    let tokenStream = llm.inferenceStreamAsync(
       text: text,
       textLen: textLen,
       promptText: promptText,
@@ -478,57 +501,218 @@ class CosyVoice3Model: Module {
       minTokenTextRatio: minTokenTextRatio
     )
 
-    // Process in chunks
-    var processedTokens = 0
-    while processedTokens < speechTokens.count {
-      let targetEnd = (chunkIdx + 1) * chunkSize + preLookaheadLen
-      let isLastChunk = targetEnd >= speechTokens.count
+    // Calculate prompt token padding to align first chunk to chunk_size boundary
+    // This matches PyTorch: prompt_token_pad = ceil(prompt_len / chunk_size) * chunk_size - prompt_len
+    let promptLen = Int(promptSpeechTokenLen[0].item(Int32.self))
+    let promptTokenPad = Int((Float(promptLen) / Float(chunkSize)).rounded(.up)) * chunkSize - promptLen
 
-      let endIdx: Int
-      let finalize: Bool
-      if isLastChunk {
-        endIdx = speechTokens.count
-        finalize = true
-      } else {
-        endIdx = min(targetEnd, speechTokens.count)
-        finalize = false
+    // Use pull-based pattern with a state-encapsulating iterator box.
+    // Marked @unchecked Sendable because AsyncThrowingStream guarantees sequential
+    // access to the unfolding closure - next() is never called concurrently.
+    final class StreamingIteratorBox: @unchecked Sendable {
+      var tokenIterator: AsyncThrowingStream<Int, Error>.Iterator
+      var speechTokens: [Int] = []
+      var tokenOffset = 0
+      var melCache: MLXArray?
+      var speechOffset = 0
+      var curSilentTokenNum = 0
+      var finished = false
+
+      let flow: CosyVoice3FlowModule
+      let hifigan: CausalHiFTGenerator
+      let promptSpeechToken: MLXArray
+      let promptSpeechTokenLen: MLXArray
+      let promptMel: MLXArray
+      let promptMelLen: MLXArray
+      let speakerEmbedding: MLXArray
+      let chunkSize: Int
+      let promptTokenPad: Int
+      let filterSilentTokens: Bool
+      let nTimesteps: Int
+      let preLookaheadLen: Int
+      let tokenMelRatio: Int
+
+      init(
+        tokenStream: AsyncThrowingStream<Int, Error>,
+        flow: CosyVoice3FlowModule,
+        hifigan: CausalHiFTGenerator,
+        promptSpeechToken: MLXArray,
+        promptSpeechTokenLen: MLXArray,
+        promptMel: MLXArray,
+        promptMelLen: MLXArray,
+        speakerEmbedding: MLXArray,
+        chunkSize: Int,
+        promptTokenPad: Int,
+        filterSilentTokens: Bool,
+        nTimesteps: Int
+      ) {
+        tokenIterator = tokenStream.makeAsyncIterator()
+        self.flow = flow
+        self.hifigan = hifigan
+        self.promptSpeechToken = promptSpeechToken
+        self.promptSpeechTokenLen = promptSpeechTokenLen
+        self.promptMel = promptMel
+        self.promptMelLen = promptMelLen
+        self.speakerEmbedding = speakerEmbedding
+        self.chunkSize = chunkSize
+        self.promptTokenPad = promptTokenPad
+        self.filterSilentTokens = filterSilentTokens
+        self.nTimesteps = nTimesteps
+        preLookaheadLen = flow.preLookaheadLen
+        tokenMelRatio = flow.tokenMelRatio
       }
 
-      let chunkTokens = Array(speechTokens[0 ..< endIdx])
-      let tokenArray = MLXArray(chunkTokens.map { Int32($0) }).reshaped(1, -1)
-      let tokenLen = MLXArray([Int32(chunkTokens.count)])
+      func next() async throws -> MLXArray? {
+        // If we've already finished, return nil
+        if finished { return nil }
 
-      let (mel, _) = try tokensToMel(
-        tokens: tokenArray,
-        tokenLen: tokenLen,
-        promptToken: promptSpeechToken,
-        promptTokenLen: promptSpeechTokenLen,
-        promptFeat: promptMel,
-        promptFeatLen: promptMelLen,
-        embedding: speakerEmbedding,
-        finalize: finalize,
-        nTimesteps: nTimesteps,
-        streaming: true
-      )
+        // Calculate current chunk size (first chunk includes padding)
+        let thisChunkSize = tokenOffset == 0 ? chunkSize + promptTokenPad : chunkSize
 
-      let audio = try melToAudio(mel: mel, finalize: finalize)
+        // Keep consuming tokens until we have enough for a chunk
+        // Matches PyTorch: len(tokens) - token_offset >= this_chunk_size + pre_lookahead_len
+        while speechTokens.count - tokenOffset < thisChunkSize + preLookaheadLen {
+          guard let token = try await tokenIterator.next() else {
+            // Token stream ended - process final chunk if we have remaining tokens
+            if speechTokens.count > tokenOffset {
+              let result = try processChunk(finalize: true)
+              finished = true
+              return result
+            }
+            finished = true
+            return nil
+          }
 
-      // Extract just the new chunk
-      let chunkStart = chunkIdx * chunkSize * tokenMelRatio
-      if audio.shape[audio.ndim - 1] > chunkStart {
-        let chunkAudio = audio[0..., chunkStart...]
-        audioChunks.append(chunkAudio.squeezed(axis: 0))
+          // Filter consecutive silent tokens (matches PyTorch llm_job)
+          if filterSilentTokens, silentTokens.contains(token) {
+            curSilentTokenNum += 1
+            if curSilentTokenNum > maxSilentTokenNum {
+              continue
+            }
+          } else {
+            curSilentTokenNum = 0
+          }
+
+          speechTokens.append(token)
+        }
+
+        // We have enough tokens for an intermediate chunk
+        let result = try processChunk(finalize: false)
+        tokenOffset += thisChunkSize
+        return result
       }
 
-      processedTokens = endIdx
-      chunkIdx += 1
+      private func processChunk(finalize: Bool) throws -> MLXArray? {
+        // Take all tokens up to current position + lookahead
+        let thisChunkSize = tokenOffset == 0 ? chunkSize + promptTokenPad : chunkSize
+        let endIdx = finalize ? speechTokens.count : tokenOffset + thisChunkSize + preLookaheadLen
+        let chunkTokens = Array(speechTokens[0 ..< endIdx])
+        let tokenArray = MLXArray(chunkTokens.map { Int32($0) }).reshaped(1, -1)
+        let tokenLen = MLXArray([Int32(chunkTokens.count)])
 
-      if isLastChunk {
-        break
+        // Generate mel via flow
+        // Note: PyTorch uses streaming=False for final chunk (full attention)
+        let (mel, _) = flow.inference(
+          token: tokenArray,
+          tokenLen: tokenLen,
+          promptToken: promptSpeechToken,
+          promptTokenLen: promptSpeechTokenLen,
+          promptFeat: promptMel,
+          promptFeatLen: promptMelLen,
+          embedding: speakerEmbedding,
+          streaming: !finalize,
+          finalize: finalize,
+          nTimesteps: nTimesteps
+        )
+
+        // Slice mel to get only new portion (from token_offset)
+        let melNew = mel[0..., 0..., (tokenOffset * tokenMelRatio)...]
+
+        // Accumulate mel (matches PyTorch caching strategy)
+        if let cache = melCache {
+          melCache = MLX.concatenated([cache, melNew], axis: 2)
+        } else {
+          melCache = melNew
+        }
+
+        // Generate audio from accumulated mel
+        let (audio, _) = hifigan(melCache!, finalize: finalize)
+
+        // Extract only new audio (from speech_offset)
+        if audio.shape[audio.ndim - 1] > speechOffset {
+          let chunkAudio = audio[0..., speechOffset...].squeezed(axis: 0)
+          speechOffset += chunkAudio.shape[0]
+          eval(chunkAudio)
+          return chunkAudio
+        }
+
+        return nil
       }
     }
 
-    return audioChunks
+    let box = StreamingIteratorBox(
+      tokenStream: tokenStream,
+      flow: flow,
+      hifigan: hifigan,
+      promptSpeechToken: promptSpeechToken,
+      promptSpeechTokenLen: promptSpeechTokenLen,
+      promptMel: promptMel,
+      promptMelLen: promptMelLen,
+      speakerEmbedding: speakerEmbedding,
+      chunkSize: chunkSize,
+      promptTokenPad: promptTokenPad,
+      filterSilentTokens: filterSilentTokens,
+      nTimesteps: nTimesteps
+    )
+
+    return AsyncThrowingStream { try await box.next() }
+  }
+
+  /// Synchronous streaming synthesis (for backwards compatibility)
+  ///
+  /// Collects all chunks and returns them as an array.
+  func synthesizeStreamingSync(
+    text: MLXArray,
+    textLen: MLXArray,
+    promptText: MLXArray,
+    promptTextLen: MLXArray,
+    promptSpeechToken: MLXArray,
+    promptSpeechTokenLen: MLXArray,
+    promptMel: MLXArray,
+    promptMelLen: MLXArray,
+    speakerEmbedding: MLXArray,
+    sampling: Int = 25,
+    nTimesteps: Int = 10,
+    chunkSize: Int = 25,
+    filterSilentTokens: Bool = true,
+    maxTokenTextRatio: Float = 20.0,
+    minTokenTextRatio: Float = 2.0
+  ) async throws -> [MLXArray] {
+    var chunks: [MLXArray] = []
+
+    let stream = synthesizeStreaming(
+      text: text,
+      textLen: textLen,
+      promptText: promptText,
+      promptTextLen: promptTextLen,
+      promptSpeechToken: promptSpeechToken,
+      promptSpeechTokenLen: promptSpeechTokenLen,
+      promptMel: promptMel,
+      promptMelLen: promptMelLen,
+      speakerEmbedding: speakerEmbedding,
+      sampling: sampling,
+      nTimesteps: nTimesteps,
+      chunkSize: chunkSize,
+      filterSilentTokens: filterSilentTokens,
+      maxTokenTextRatio: maxTokenTextRatio,
+      minTokenTextRatio: minTokenTextRatio
+    )
+
+    for try await chunk in stream {
+      chunks.append(chunk)
+    }
+
+    return chunks
   }
 }
 
@@ -642,18 +826,22 @@ class CosyVoice3FlowModule: Module {
     tokenEmb = tokenEmb * tokenMaskExpanded
 
     // Process through PreLookaheadLayer
-    var encoderOut = preLookaheadLayer(tokenEmb, context: nil)
+    // In streaming mode (finalize=false), split tokens into main + lookahead context
+    // so the convolution sees real future tokens instead of zero padding
+    var encoderOut: MLXArray
+    if finalize {
+      // Non-streaming: no context needed (layer pads with zeros)
+      encoderOut = preLookaheadLayer(tokenEmb, context: nil)
+    } else {
+      // Streaming: split into main tokens and lookahead context
+      let seqLen = tokenEmb.shape[1]
+      let mainTokens = tokenEmb[0..., 0 ..< (seqLen - preLookaheadLen), 0...]
+      let context = tokenEmb[0..., (seqLen - preLookaheadLen)..., 0...]
+      encoderOut = preLookaheadLayer(mainTokens, context: context)
+    }
 
     // Upsample by tokenMelRatio
     encoderOut = MLX.repeated(encoderOut, count: tokenMelRatio, axis: 1)
-
-    // Trim lookahead for streaming (unless finalizing)
-    if !finalize {
-      let trimLen = preLookaheadLen * tokenMelRatio
-      if encoderOut.shape[1] > trimLen {
-        encoderOut = encoderOut[0..., 0 ..< (encoderOut.shape[1] - trimLen), 0...]
-      }
-    }
 
     // Calculate mel lengths
     let melLen1 = promptFeat.shape[1]

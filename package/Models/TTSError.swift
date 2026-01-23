@@ -37,6 +37,9 @@ public enum TTSError: LocalizedError {
   /// Invalid configuration or arguments
   case invalidArgument(String)
 
+  /// Requested streaming granularity is not supported by this engine
+  case unsupportedStreamingGranularity(requested: StreamingGranularity, supported: Set<StreamingGranularity>)
+
   // MARK: - LocalizedError
 
   public var errorDescription: String? {
@@ -63,6 +66,8 @@ public enum TTSError: LocalizedError {
         "File I/O error: \(error.localizedDescription)"
       case let .invalidArgument(message):
         "Invalid argument: \(message)"
+      case let .unsupportedStreamingGranularity(requested, supported):
+        "Unsupported streaming granularity: \(requested.description). Supported: \(supported.map(\.description).joined(separator: ", "))"
     }
   }
 
@@ -90,6 +95,8 @@ public enum TTSError: LocalizedError {
         "A file system operation failed."
       case .invalidArgument:
         "An invalid argument was provided."
+      case .unsupportedStreamingGranularity:
+        "The requested streaming granularity is not supported by this engine."
     }
   }
 
@@ -117,6 +124,8 @@ public enum TTSError: LocalizedError {
         "Check file permissions and available disk space."
       case .invalidArgument:
         "Review the method documentation for valid argument values."
+      case let .unsupportedStreamingGranularity(_, supported):
+        "Use one of the supported granularities: \(supported.map(\.description).joined(separator: ", "))."
     }
   }
 }
