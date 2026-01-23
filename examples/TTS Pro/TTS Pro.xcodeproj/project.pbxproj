@@ -7,12 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0332E1172F22FC0B00CD677D /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E1162F22FC0B00CD677D /* MLXEmbedders */; };
+		0332E1192F22FC0B00CD677D /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E1182F22FC0B00CD677D /* MLXLLM */; };
+		0332E11B2F22FC0B00CD677D /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E11A2F22FC0B00CD677D /* MLXLMCommon */; };
+		0332E11D2F22FC0B00CD677D /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E11C2F22FC0B00CD677D /* MLXVLM */; };
+		0332E1202F22FD7100CD677D /* Kokoro in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E11F2F22FD7100CD677D /* Kokoro */; };
+		0332E1222F22FD7100CD677D /* MLXAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E1212F22FD7100CD677D /* MLXAudio */; };
+		0332E1252F22FD9000CD677D /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E1242F22FD9000CD677D /* MLXEmbedders */; };
+		0332E1272F22FD9000CD677D /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E1262F22FD9000CD677D /* MLXLLM */; };
+		0332E1292F22FD9000CD677D /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E1282F22FD9000CD677D /* MLXLMCommon */; };
+		0332E12B2F22FD9000CD677D /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = 0332E12A2F22FD9000CD677D /* MLXVLM */; };
 		03DB76252EF8F21400925705 /* Kokoro in Frameworks */ = {isa = PBXBuildFile; productRef = 03DB76242EF8F21400925705 /* Kokoro */; };
 		03DB76272EF8F21400925705 /* MLXAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 03DB76262EF8F21400925705 /* MLXAudio */; };
 		03E61ED22EFF6062008D2EB2 /* Kokoro in Frameworks */ = {isa = PBXBuildFile; productRef = 03E61ED12EFF6062008D2EB2 /* Kokoro */; };
 		03E61ED42EFF6062008D2EB2 /* MLXAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 03E61ED32EFF6062008D2EB2 /* MLXAudio */; };
-		0A6ECD582E6C2CE300837C54 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 0A6ECD572E6C2CE300837C54 /* MLXLLM */; };
-		0A6ECD5A2E6C2CE300837C54 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 0A6ECD592E6C2CE300837C54 /* MLXLMCommon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -45,12 +53,20 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0332E1272F22FD9000CD677D /* MLXLLM in Frameworks */,
+				0332E1192F22FC0B00CD677D /* MLXLLM in Frameworks */,
 				03E61ED22EFF6062008D2EB2 /* Kokoro in Frameworks */,
+				0332E1202F22FD7100CD677D /* Kokoro in Frameworks */,
+				0332E1222F22FD7100CD677D /* MLXAudio in Frameworks */,
 				03E61ED42EFF6062008D2EB2 /* MLXAudio in Frameworks */,
-				0A6ECD582E6C2CE300837C54 /* MLXLLM in Frameworks */,
-				0A6ECD5A2E6C2CE300837C54 /* MLXLMCommon in Frameworks */,
 				03DB76252EF8F21400925705 /* Kokoro in Frameworks */,
+				0332E1252F22FD9000CD677D /* MLXEmbedders in Frameworks */,
 				03DB76272EF8F21400925705 /* MLXAudio in Frameworks */,
+				0332E1172F22FC0B00CD677D /* MLXEmbedders in Frameworks */,
+				0332E12B2F22FD9000CD677D /* MLXVLM in Frameworks */,
+				0332E11D2F22FC0B00CD677D /* MLXVLM in Frameworks */,
+				0332E11B2F22FC0B00CD677D /* MLXLMCommon in Frameworks */,
+				0332E1292F22FD9000CD677D /* MLXLMCommon in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -94,12 +110,20 @@
 			);
 			name = "TTS Pro";
 			packageProductDependencies = (
-				0A6ECD572E6C2CE300837C54 /* MLXLLM */,
-				0A6ECD592E6C2CE300837C54 /* MLXLMCommon */,
 				03DB76242EF8F21400925705 /* Kokoro */,
 				03DB76262EF8F21400925705 /* MLXAudio */,
 				03E61ED12EFF6062008D2EB2 /* Kokoro */,
 				03E61ED32EFF6062008D2EB2 /* MLXAudio */,
+				0332E1162F22FC0B00CD677D /* MLXEmbedders */,
+				0332E1182F22FC0B00CD677D /* MLXLLM */,
+				0332E11A2F22FC0B00CD677D /* MLXLMCommon */,
+				0332E11C2F22FC0B00CD677D /* MLXVLM */,
+				0332E11F2F22FD7100CD677D /* Kokoro */,
+				0332E1212F22FD7100CD677D /* MLXAudio */,
+				0332E1242F22FD9000CD677D /* MLXEmbedders */,
+				0332E1262F22FD9000CD677D /* MLXLLM */,
+				0332E1282F22FD9000CD677D /* MLXLMCommon */,
+				0332E12A2F22FD9000CD677D /* MLXVLM */,
 			);
 			productName = "TTS Pro";
 			productReference = 26942CF62DABD3B400B82507 /* TTS Pro.app */;
@@ -130,8 +154,8 @@
 			mainGroup = 26942CED2DABD3B400B82507;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
-				03E61ED02EFF6062008D2EB2 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-wh" */,
+				0332E11E2F22FD7100CD677D /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-wh" */,
+				0332E1232F22FD9000CD677D /* XCLocalSwiftPackageReference "../../../mlx-swift-lm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 26942CF72DABD3B400B82507 /* Products */;
@@ -413,24 +437,57 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		03E61ED02EFF6062008D2EB2 /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-wh" */ = {
+		0332E11E2F22FD7100CD677D /* XCLocalSwiftPackageReference "../../../mlx-swift-audio-wh" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../../../mlx-swift-audio-wh";
 		};
+		0332E1232F22FD9000CD677D /* XCLocalSwiftPackageReference "../../../mlx-swift-lm" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../../mlx-swift-lm";
+		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
+		0332E1162F22FC0B00CD677D /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXEmbedders;
+		};
+		0332E1182F22FC0B00CD677D /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLLM;
+		};
+		0332E11A2F22FC0B00CD677D /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLMCommon;
+		};
+		0332E11C2F22FC0B00CD677D /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXVLM;
+		};
+		0332E11F2F22FD7100CD677D /* Kokoro */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Kokoro;
+		};
+		0332E1212F22FD7100CD677D /* MLXAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXAudio;
+		};
+		0332E1242F22FD9000CD677D /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXEmbedders;
+		};
+		0332E1262F22FD9000CD677D /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLLM;
+		};
+		0332E1282F22FD9000CD677D /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXLMCommon;
+		};
+		0332E12A2F22FD9000CD677D /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MLXVLM;
+		};
 		03DB76242EF8F21400925705 /* Kokoro */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Kokoro;
@@ -446,16 +503,6 @@
 		03E61ED32EFF6062008D2EB2 /* MLXAudio */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MLXAudio;
-		};
-		0A6ECD572E6C2CE300837C54 /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLLM;
-		};
-		0A6ECD592E6C2CE300837C54 /* MLXLMCommon */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 0A6ECD562E6C2CD700837C54 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLMCommon;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

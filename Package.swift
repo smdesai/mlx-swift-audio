@@ -17,8 +17,8 @@ let package = Package(
     ),
   ],
   dependencies: [
-    .package(url: "https://github.com/ml-explore/mlx-swift-lm", branch: "main"),
-    .package(url: "https://github.com/ml-explore/mlx-swift", branch: "main"),
+    .package(path: "/Users/sachin/Tools/MLX/mlx-swift-lm"),
+    .package(path: "/Users/sachin/Tools/MLX/mlx-swift"),
     .package(url: "https://github.com/huggingface/swift-transformers", .upToNextMinor(from: "1.1.0")),
     .package(url: "https://github.com/DePasqualeOrg/swift-tiktoken", branch: "main"),
     // espeak-ng is GPLv3 licensed - only linked when using Kokoro
@@ -32,6 +32,9 @@ let package = Package(
         .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
         .product(name: "MLXLLM", package: "mlx-swift-lm"),
         .product(name: "MLXFFT", package: "mlx-swift"),
+        .product(name: "MLXRandom", package: "mlx-swift"),
+        .product(name: "MLXFast", package: "mlx-swift"),
+        .product(name: "MLXLinalg", package: "mlx-swift"),
         .product(name: "Transformers", package: "swift-transformers"),
         .product(name: "SwiftTiktoken", package: "swift-tiktoken"),
       ],

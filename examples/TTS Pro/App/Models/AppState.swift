@@ -101,7 +101,7 @@ final class AppState {
   var error: TTSError? { engineManager.error }
   var generationTime: TimeInterval { engineManager.generationTime }
   var lastGeneratedAudioURL: URL? { engineManager.lastGeneratedAudioURL }
-  var streamingGranularity: StreamingGranularity { engineManager.currentEngine.streamingGranularity }
+  var streamingGranularity: StreamingGranularity { engineManager.currentEngine.defaultStreamingGranularity }
 
   var canGenerate: Bool {
     isLoaded && !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isGenerating
